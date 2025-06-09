@@ -1,4 +1,5 @@
 venv/
 sunt/
-saidaPrints.txt
+tensorboard_graph_exploration/
+logs.txt
 q45833547-46022171-0.9-0.9-0.01.pkl

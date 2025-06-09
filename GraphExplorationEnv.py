@@ -9,6 +9,7 @@ import random
 class GraphExplorationEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
+    
     # network: Grafo do tipo networkx.Graph
     # actions_amount: Número de ações possíveis (em geral, o máximo de vizinhos que um nó pode ter)
     # stopClass: Classe de parada personalizada (opcional)
@@ -37,15 +38,19 @@ class GraphExplorationEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(actions_amout)
         # self.observation_space = gym.spaces.Box(low=0, high=np.array([self.network.number_of_nodes() - 1 , self.network.number_of_nodes() - 1]), shape=(2,), dtype=np.int64)
         
-        self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))}
+        self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))} 
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
         
-        self.observation_space = spaces.Box(low=0, high=len(self.network.nodes()) - 1, shape=(2,), dtype=np.int64)
+        self.observation_space = spaces.Box(
+            low=0, 
+            high=len(self.network.nodes()) - 1, 
+            shape=(2,), 
+            dtype=np.int64)
 
 
-
-        self.count = 0
-
+     
+        self.count = 0 # Contador de Passos
+        
         # Um delay dinamico em alguns nós, eventos que aumentam o tempo de viagem em certas arestas ao longo do tempo
         self.dynamicDelays = {} # dicionário que armazena o tempo de espera dinâmico em cada aresta (u, v) do grafo
 
@@ -72,7 +77,7 @@ class GraphExplorationEnv(gym.Env):
         self.generate_random_delay(self.initial,self.target) # Geração de atraso simulado em uma aresta aleatória
 
         # Definição de peso da aresta
-        def edge_weight(u, v, d):
+        def edge_weight(u, v, d): 
             key = (min(str(u), str(v)), max(str(u), str(v))) # Ordena os nós da aresta para evitar duplicação
             return self.reward.waitTimeDict.get(key, (1, 1))[0] # Pega o tempo de espera da aresta, se não existir, usa (1, 1) como padrão
         
@@ -84,15 +89,12 @@ class GraphExplorationEnv(gym.Env):
                 self.reward.waitTimeDict.get((min(str(path[i]), str(path[i+1])), max(str(path[i]), str(path[i+1]))), (1, 1))[0] # Tempo de espera da aresta
                 for i in range(len(path)-1)
             )
-            print("Caminho ótimo entre o nó inicial e o alvo: ", path)
-            print("Tempo estimado do trajeto ótimo: ", self.max_expected_time)
+            #print("Caminho ótimo entre o nó inicial e o alvo: ", path)
+            #print("Tempo estimado do trajeto ótimo: ", self.max_expected_time)
         
         except nx.NetworkXNoPath: # Se não houver caminho entre o nó inicial e o alvo, trata a exceção
-            print("Nenhum caminho encontrado entre o node inicial e o alvo")
+            #print("Nenhum caminho encontrado entre o node inicial e o alvo")
             self.max_expected_time = float('inf') # Define o tempo estimado como infinito, pois não há caminho
-        
-        while(self.state == self.target and self.network.number_of_nodes != 1): # Garante que o nó inicial e o nó alvo sejam diferentes
-            self.target = list(self.network.nodes)[random.randint(0, self.network.number_of_nodes()-1)]
 
         # obs = (self.state, self.target) # Retorna a observação inicial: uma tupla (estado atual, destino) 
         obs = np.array([
@@ -111,12 +113,26 @@ class GraphExplorationEnv(gym.Env):
         possibleNextStates = list(self.network.neighbors(self.state)) 
         previousState = self.state
 
-        if action >= len(possibleNextStates): # Se a ação escolhida for maior que o número de vizinhos, lança um erro
-            raise ValueError(f"Ação {action} inválida. Apenas {len(possibleNextStates)} vizinhos disponíveis.")
+        # Se o nó atual não tem vizinhos, termina o episódio imediatamente | VER SE É INTERESSANTE MESMO FAZER ISSO
+        if len(possibleNextStates) == 0:
+            return self._make_step_return(previousState, reward=0, terminated=True)
 
-        # Se o nó atual não tem vizinhos, termina o episódio
-        if len(possibleNextStates) != 0: # Atualiza o estado se possível, se houver vizinhos
-            self.state = possibleNextStates[action]
+       # if action >= len(possibleNextStates): # Se a ação escolhida for maior que o número de vizinhos, lança um erro
+       #     raise ValueError(f"Ação {action} inválida. Apenas {len(possibleNextStates)} vizinhos disponíveis.")
+        
+        if action >= len(possibleNextStates):
+            reward = -100000  # Penalidade por ação inválida
+            terminated = False
+            obs = np.array([
+                self.node_to_idx[self.state],
+                self.node_to_idx[self.target]
+            ], dtype=np.int64)
+            print(reward)
+            return obs, reward, terminated, True, {}
+
+
+        # Atualiza o estado com base na ação
+        self.state = possibleNextStates[action]
 
         # Antes de mudar de estado, calula-se o tempo real da aresta 
         # Aresta é uma tupla (u, v) onde u é o nó anterior e v é o nó atual
@@ -128,7 +144,7 @@ class GraphExplorationEnv(gym.Env):
 
         self.estimated_time_so_far += total_time # Acumula o tempo estimado
 
-        print(f"Current state: {self.state}, Target: {self.target}, Estimated time so far: {self.estimated_time_so_far}, Delay: {delay}, Total time: {total_time}")
+        # print(f"Current state: {self.state}, Target: {self.target}, Estimated time so far: {self.estimated_time_so_far}, Delay: {delay}, Total time: {total_time}")
 
         # Usa a rewardClass e stopClass para calcular recompensa e término do episódio
         reward = self.reward.getReward(
@@ -138,18 +154,16 @@ class GraphExplorationEnv(gym.Env):
 
         terminated = self.stop.isTerminated(self.state, previousState, action, self.target, self.network)
 
-        print("Reward on Step:",reward, "Terminated:",terminated)
-
-        done = terminated # done é True se o episódio terminou (o agente chegou ao alvo)
+        # print("Reward on Step:",reward, "Terminated:",terminated)
 
         # obs = (self.state, self.target)
         obs = np.array([
-            self.node_to_idx[self.initial],
+            self.node_to_idx[self.state],
             self.node_to_idx[self.target]
         ], dtype=np.int64)
 
         # Retorna: observação, recompensa, se o episódio terminou, se o episódio foi truncado (False), e um dicionário com metadados (count de passos)
-        return obs, reward, done, False, {"count" : self.count}
+        return obs, reward, terminated, False, {"count" : self.count}
 
     def generate_random_delay(self, start, target):
         try:
@@ -169,10 +183,11 @@ class GraphExplorationEnv(gym.Env):
                     edge_time = self.reward.waitTimeDict[edge_key][0]
                     total_time += edge_time # Soma o tempo de espera da aresta
                 else:
-                    print(f"[AVISO] Aresta {edge_key} não está no waitTimeDict!")
+                    x = 0 
+                    #print(f"[AVISO] Aresta {edge_key} não está no waitTimeDict!")
 
             average_time = total_time / len(path_edges)
-            print(f"Média de tempo das arestas do caminho ótimo: {average_time}")
+            #print(f"Média de tempo das arestas do caminho ótimo: {average_time}")
 
             # Escolhe uma das arestas do caminho para atrasar
             delay_u, delay_v = random.choice(path_edges)
@@ -184,13 +199,21 @@ class GraphExplorationEnv(gym.Env):
                 self.dynamicDelays = {
                     delay_edge_key: delay # Aresta escolhida para atraso com o tempo de atraso aplicado
                 }
-                print(f"Aresta atrasada: {delay_edge_key}, atraso aplicado: {delay}")
+                #print(f"Aresta atrasada: {delay_edge_key}, atraso aplicado: {delay}")
             else:
-                print(f"[ERRO] Aresta escolhida para atraso {delay_edge_key} não está no waitTimeDict.")
+                #print(f"[ERRO] Aresta escolhida para atraso {delay_edge_key} não está no waitTimeDict.")
                 self.dynamicDelays = {}
 
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             self.dynamicDelays = {}
+
+    # Método auxiliar para criar o retorno do passo
+    def _make_step_return(self, state, reward, terminated):
+        obs = np.array([
+            self.node_to_idx[state], # Estado atual
+            self.node_to_idx[self.target] # Nó alvo
+        ], dtype=np.int64)
+        return obs, reward, terminated, False, {"count": self.count} 
 
     def render(self):
         pass  
@@ -247,159 +270,3 @@ class DefaultStopClass(StopConditionBaseClass):
     def isTerminated(self, state, previousState, action, target, graph):
         return state == target
     
-
-if __name__ == "__main__":
-
-    # episodes: número de episódios de treino/teste
-    # env: ambiente (instância da classe GraphExplorationEnv)
-    # alpha: taxa de aprendizado (quanto o agente aprende a cada iteração)
-    # gamma: fator de desconto (quão importante é o futuro em relação ao presente)
-    # epsilon: taxa de exploração (probabilidade de explorar vs. explorar o conhecimento atual)
-    # is_training: se True, treina o agente; se False, carrega a tabela Q de um arquivo
-    def run_q(episodes, env, alpha, gamma, epsilon, is_training=True):
-        import time
-        import matplotlib.pyplot as plt
-        startTime = time.time() # Registra o tempo para garantir que a execução não ultrapasse 2 horas
-        max_steps = 5000  # Limite (generico) de passos por episódio, valor pode mudar
-
-       #  rewardsPerStep = []  # Array para guardar a recompensa total de cada passo
-
-        rewardsPerEpisode = np.zeros(episodes)
-
-
-        try:
-            if(is_training): # Se for treinamento, começamos com Q-table vazia
-                q = {}
-            else: # Se não for treinamento, carregamos a Q-table de um arquivo
-                f = open('q.pkl', 'rb')
-                q = pickle.load(f)
-                f.close()
-                
-            stepsPerEpisode = np.zeros(episodes) # Array para guardar quantos passos foram dados em cada episódio
-        
-            for i in range(episodes): # Inicia o laço de episódios de treino/teste
-                
-                # Reinicia o ambiente (env.reset()) e recebe o estado inicial (posição atual + alvo)
-                stepCount = 0 # contador de passos do episódio atual
-                currentEpisodeReward = 0 # Variável para acumular a recompensa do episódio atual
-                state = env.reset()[0]
-                start = state[0]
-                target = state[1]
-                terminated = False # Terminated marca se o episódio terminou (atingiu o alvo)
-
-                while(not terminated and stepCount < max_steps): # Enquanto o episódio não terminar seguir
-
-                    neighbors = list(env.network.neighbors(state[0]))
-                    if not neighbors:  # Se não houver vizinhos, termina o episódio
-                        terminated = True
-                        continue
-
-                    if state not in q: # Se esse estado (posição atual + alvo) ainda não está na Q-table, criamos entradas para ele
-                        q[state] = {}
-                        for act in range(len(list(env.network.neighbors(state[0])))):
-                            q[state][act] = 0 # Cada entrada é associada a um possível vizinho do nó atual     
-
-                    a = random.random() # Gera número aleatório    
-
-                    if is_training and a< epsilon: # Se a < epsilon → agente explora: escolhe ação aleatória
-                        n = list(env.network.neighbors(state[0]))
-                        action = random.randint(0, max(0,len(n) -1)) # based on number of neighbors of position node
-                    else: # Senão → agente explota: escolhe ação com maior valor Q (com desempate aleatório)           
-                        values = [ q[state][act] for act in range(len(list(env.network.neighbors(state[0])))) ]
-                        ix_max = [ act for act, value in enumerate(values) if value == max(values) ]
-                        action = ( random.choice(ix_max) ) if len(ix_max) > 0 else 0
-                    
-                    # Faz o passo no ambiente, recebendo o novo estado, recompensa, se o episódio terminou (chegou ao alvo?), e metadados
-                    new_state,reward,terminated,_,extra = env.step(action)
-
-                    currentEpisodeReward += reward # Acumula a recompensa do episódio atual
-
-                    # rewardsPerStep.append(reward) # Acumula a recompensa total de cada passo
-
-                    rewardsPerEpisode[i] = currentEpisodeReward
-                    
-                    # Mesma lógica que antes — se o novo estado ainda não está na Q-table, criamos entradas
-                    if new_state not in q:
-                        q[new_state] = {}
-                        for act in range(len(list(env.network.neighbors(new_state[0])))):
-                            q[new_state][act] = 0
-
-                    # Atualização da Q-table (apenas se for treino)
-                    # Essa é a equação padrão do Q-learning 
-                    if is_training:
-
-                        # A Q-table é atualizada com base na recompensa recebida e no valor máximo da próxima ação
-                        qValues = [q[new_state][act] for act in q[new_state]] if q[new_state] else [0]
-                        # qValues = [ q[new_state][act] for act in range(len(list(env.network.neighbors(new_state[0])))) ]
-                        
-                        sample = reward + gamma * (max(qValues) if len(qValues) > 0 else 0)
-
-                        part1 = ( (1 - alpha) * q[state][action] ) if len(q[state]) > 0 else float('-inf')
-                        part2 = alpha * sample
-                        
-                        q[state][action] = part1 + part2
-
-                    # Atualiza o estado atual para o novo estado
-                    state = new_state
-
-                    stepCount += 1
-
-                    # Se o episódio terminou (o agente chegou ao alvo), imprime o resultado e salva o número de passos
-                    if terminated:
-                        print(f"({i}) {start} -> {target} in {stepCount} steps with epsilon {epsilon}")
-                        stepsPerEpisode[i] = stepCount
-                        stepCount = 0
-                
-                # rewardsPerStep[i] = currentEpisodeReward
-                # Reduz o epsilon ao longo dos episódios para explorar menos e explorar mais com o tempo
-                epsilon = max(epsilon - 1/(episodes), 0.01) # Nunca deixa epsilon menor que 0.01 (exploração mínima)
-                if time.time() - startTime > 60 * 60 * 2: # 2 hours
-                    break
-
-            env.close() # Fecha o ambiente
-
-        finally:
-            # Calcula a média móvel dos passos por episódio (últimos 100 episódios)
-            # Plota esse gráfico e salva
-            print("np.zeros(i): ", np.zeros(i))
-            sumSteps = np.zeros(i)
-            for t in range(i):
-                sumSteps[t] = np.mean(stepsPerEpisode[max(0, t-100):(t+1)]) # Média móvel dos passos por episódio
-
-            plt.plot(sumSteps) # Plota a média móvel dos passos por episódio
-            plt.savefig(f'q{env.initial}-{env.target}-{alpha}-{gamma}-{epsilon}.png')
-
-            # Plota a RECOMPENSA total por passo
-            #window_size = 100
-            #moving_avg = [np.mean(rewardsPerStep[max(0, i-window_size):i+1]) for i in range(len(rewardsPerStep))] # Média móvel da recompensa total por passo
-            
-            # Plota a RECOMPENSA total por episódio (média móvel)
-            window_size = 100
-            moving_avg = [np.mean(rewardsPerEpisode[max(0, i-window_size):i+1]) for i in range(len(rewardsPerEpisode))]
-
-            plt.figure(figsize=(12,6))
-            plt.plot(moving_avg)
-            plt.title("Recompensa por episódio (média móvel)")
-            plt.xlabel("Episódios")
-            plt.ylabel("Recompensa média")
-            plt.grid(True)
-            plt.savefig(f'rewards-smooth-{env.initial}-{env.target}-{alpha}-{gamma}-{epsilon}.png')
-
-            # np.save(f'steps_{env.initial}_{env.target}.npy', stepsPerEpisode) # Salva o número de passos por episódio em um arquivo .npy
-            # Se for treinamento, salva a Q-table em um arquivo
-            if is_training:
-                # Save Q Table
-                f = open(f'q{env.initial}-{env.target}-{alpha}-{gamma}-{epsilon}.pkl',"wb")
-                pickle.dump(q, f)
-                f.close()
-
-
-    with open('./sunt/graph_designer/graph_gtfs.gpickle', 'rb') as f: # Carrega o grafo salvo
-        G = pickle.load(f)
-
-    
-    env = GraphExplorationEnv(G, 9) # Cria o ambiente com o grafo carregado e 9 ações possíveis (número máximo de vizinhos de um nó)
-
-    run_q(10, env, 0.9, 0.9, 0.2, is_training=True) # Executa run_q(...) com 20000 episódios e hiperparâmetros definidos (alpha=0.9, gamma=0.9, epsilon=0.2).
-
-    #run_q(1, env, alpha=0.9, gamma=0.9, epsilon=0.0, is_training=False) # Teste da política aprendida
