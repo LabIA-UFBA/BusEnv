@@ -15,7 +15,7 @@ class GraphExplorationEnv(gym.Env):
     # stopClass: Classe de parada personalizada (opcional)
     # rewardClass: Classe de recompensa personalizada (opcional)
     # initial, target: nós de início e destino (se não passados, são escolhidos aleatoriamente)
-    def __init__(self, network: nx.Graph, actions_amout: int, stopClass = None, rewardClass = None, initial = None, target = None):
+    def __init__(self, network: nx.Graph, actions_amout: int, max_steps: int, stopClass = None, rewardClass = None, initial = None, target = None):
         super(GraphExplorationEnv, self).__init__()
         self.network = network
 
@@ -47,7 +47,9 @@ class GraphExplorationEnv(gym.Env):
             shape=(2,), 
             dtype=np.int64)
 
-
+        
+        # Define o número máximo de passos por episódio
+        self.max_steps = max_steps
      
         self.count = 0 # Contador de Passos
         
@@ -110,7 +112,9 @@ class GraphExplorationEnv(gym.Env):
         self.count += 1
 
         # possibleNextStates: são os vizinhos do estado atual (os possíveis próximos estados)
-        possibleNextStates = list(self.network.neighbors(self.state)) 
+        possibleNextStates = list(self.network.neighbors(self.state))
+        print(possibleNextStates, "Possible next states") 
+        print("action:", action)
         previousState = self.state
 
         # Se o nó atual não tem vizinhos, termina o episódio imediatamente | VER SE É INTERESSANTE MESMO FAZER ISSO
@@ -121,13 +125,14 @@ class GraphExplorationEnv(gym.Env):
        #     raise ValueError(f"Ação {action} inválida. Apenas {len(possibleNextStates)} vizinhos disponíveis.")
         
         if action >= len(possibleNextStates):
-            reward = -100000  # Penalidade por ação inválida
+            reward = -150  # Penalidade por ação inválida
             terminated = False
             obs = np.array([
                 self.node_to_idx[self.state],
                 self.node_to_idx[self.target]
             ], dtype=np.int64)
             print(reward)
+            # trunca o episódio, mas não termina
             return obs, reward, terminated, True, {}
 
 
@@ -160,8 +165,14 @@ class GraphExplorationEnv(gym.Env):
         obs = np.array([
             self.node_to_idx[self.state],
             self.node_to_idx[self.target]
-        ], dtype=np.int64)
+        ], dtype=np.int64) 
 
+        # Episódio truncado por limite de passos
+        if self.count >= self.max_steps:
+            print(f"[AVISO] Episódio truncado após {self.count} passos.")
+            return obs, reward, False, True, {"count": self.count}
+
+        print("step executado com sucesso, recompensa:", reward, "terminado:", terminated)
         # Retorna: observação, recompensa, se o episódio terminou, se o episódio foi truncado (False), e um dicionário com metadados (count de passos)
         return obs, reward, terminated, False, {"count" : self.count}
 
@@ -249,7 +260,8 @@ class DefaultReward(RewardBaseClass):
         # Recompensa negativa pelo tempo gasto
         # A recompensa é negativa, pois o agente deve minimizar o tempo gasto
         # Isso casa perfeitamente com algoritmos como Q-learning ou DQN, que maximizam retorno acumulado
-        reward = - (totalTime + delay)
+        print(f"Total time: {totalTime}, Delay: {delay}, Estimated time so far: {estimated_time_so_far}, Max expected time: {max_expected_time}")
+        reward = - ((totalTime / 3600) + delay) # Convertendo para horas
 
         # Se o agente chega no destino, dá um bônus proporcional ao tempo estimado e ao tempo máximo esperado
         if state == target:

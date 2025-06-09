@@ -12,15 +12,12 @@ import copy
 
 
 if __name__ == "__main__":
-    # Carrega o grafo
+    # Carrega o grafo do SUNT
     with open('./sunt/graph_designer/graph_gtfs.gpickle', 'rb') as f:
         G = pickle.load(f)
 
-    # Define o número máximo de ações com base no nó mais conectado
-    ACTIONS = max([len(list(G.neighbors(n))) for n in G.nodes])
-
     # Cria o ambiente
-    raw_env = GraphExplorationEnv(network=G, actions_amout=ACTIONS)
+    raw_env = GraphExplorationEnv(network=G, actions_amout=9, max_steps=100)
 
     # Verifica se o ambiente está de acordo com o padrão Gym
     check_env(raw_env, warn=True)
@@ -39,7 +36,7 @@ if __name__ == "__main__":
     env = TimeLimit(monitored_env, max_episode_steps=200)
 
     # Wrap com DummyVecEnv
-    env = make_vec_env(lambda: monitored_env, n_envs=1) # Use n_envs=1 para simplificar o exemplo
+    env = make_vec_env(lambda: monitored_env, n_envs=1) # Usar n_envs=1 para simplificar o exemplo
 
 
     # Inicializa o modelo DQN
@@ -51,11 +48,11 @@ if __name__ == "__main__":
         tensorboard_log=tensorboard_log_dir
     )
 
-    callback = SaveOnBestTrainingRewardCallback(check_freq=1000, log_dir=eval_log_dir) 
+    callback = SaveOnBestTrainingRewardCallback(check_freq=5000, log_dir=eval_log_dir) 
 
     # Treinamento com log para TensorBoard
     model.learn(
-        total_timesteps=5000,
+        total_timesteps=50000,
         tb_log_name="DQN_GraphRun",
         progress_bar=True,
         callback=callback
