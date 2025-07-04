@@ -49,7 +49,7 @@ class parallel_env(ParallelEnv):
     
     def reset(self, seed=None, options=None):
         if seed is not None:
-            self.np_random, self.np_random_seed = gymnasium.utils.seeding.np_random(seed)
+            self.np_random = gymnasium.utils.seeding.np_random(seed)
 
         self.agents = self.possible_agents[:]
 
@@ -77,7 +77,7 @@ class parallel_env(ParallelEnv):
             self.targets[agent] = target
             self.steps[agent] = 0
             self.estimated_times[agent] = 0
-            self.delays[agent] = {}  # se quiser simular delays individuais
+            self.delays[agent] = {}  # Se quiser simular delays individuais
 
             # Chama sua função de delay
             self.generate_random_delay(initial, target)
