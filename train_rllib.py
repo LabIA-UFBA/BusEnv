@@ -5,11 +5,10 @@ from ray.tune.registry import register_env
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.train import RunConfig  
 from ray.tune import TuneConfig
-from ray.tune.tuner import Tuner
-from pettingzoo.utils import parallel_to_aec
-from supersuit import pad_observations_v0, pad_action_space_v0
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-from multi_agent_sunt_env import parallel_env
+from ray.tune.tuner import Tuner # Ray Tune API
+from pettingzoo.utils import parallel_to_aec # Importando o PettingZoo para compatibilidade com Ray RLlib
+from supersuit import pad_observations_v0, pad_action_space_v0 # Importando o Supersuit para compatibilidade com Ray RLlib
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
 from ray.rllib.utils.pre_checks.env  import check_env
 
 
@@ -17,12 +16,12 @@ from ray.rllib.utils.pre_checks.env  import check_env
 
 def env_creator(config):
     import pickle
-    from multi_agent_sunt_env import parallel_env
+    from multi_agent_sunt_env import parallel_env # Importando o ambiente multiagente personalizado
 
     with open('./sunt/graph_designer/graph_gtfs.gpickle', 'rb') as f:
         G = pickle.load(f)
 
-    env = parallel_env(
+    env = parallel_env( # Criando o ambiente multiagente
         network=G,
         actions_amount=9,
         max_steps=100,
@@ -30,18 +29,18 @@ def env_creator(config):
     )
     env = pad_observations_v0(env)
     env = pad_action_space_v0(env)
-    env = ParallelPettingZooEnv(env)
+    env = ParallelPettingZooEnv(env) # Convertendo o ambiente para o formato compatível com Ray RLlib
     # env = parallel_to_aec(env)
 
-    check_env(env)
+    check_env(env) # Verificando se o ambiente está correto para uso com Ray RLlib
 
     return env
 
 
 
-register_env("sunt_env", lambda config: env_creator(config))
+register_env("sunt_env", lambda config: env_creator(config)) # Registrando o ambiente personalizado no Ray RLlib
 
-ray.init(ignore_reinit_error=True)
+ray.init(ignore_reinit_error=True) # Inicializando o Ray
 
 env = env_creator({})
 agents = env.par_env.possible_agents
@@ -55,12 +54,12 @@ policies = {
 }
 policy_mapping_fn = lambda agent_id, *args, **kwargs: "shared_policy"
 
-config = (
+config = ( # Configuração do Ray RLlib
     PPOConfig()
     .environment(env="sunt_env")
     .framework("torch")
     .rollouts(num_rollout_workers=1)
-    .training(train_batch_size=4000, gamma=0.99)
+    .training(train_batch_size=4000, gamma=0.99) # Tamanho do lote de treinamento
     .resources(num_gpus=0)
     .multi_agent(
         policies=policies,
@@ -69,8 +68,8 @@ config = (
 )
 
 # Treinamento com Tuner (novo Tune API)
-tuner = Tuner(
-    "PPO",
+tuner = Tuner( 
+    "PPO", # Algoritmo PPO do Ray RLlib
     run_config=RunConfig(
         stop={"training_iteration": 5},
         local_dir="./results",
