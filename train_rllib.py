@@ -37,7 +37,6 @@ def env_creator(config):
     return env
 
 
-
 register_env("sunt_env", lambda config: env_creator(config)) # Registrando o ambiente personalizado no Ray RLlib
 
 ray.init(ignore_reinit_error=True) # Inicializando o Ray

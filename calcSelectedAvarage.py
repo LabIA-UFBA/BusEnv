@@ -88,7 +88,7 @@ for index, date_folder in enumerate(date_folders):
         combined_averages[stop_pair][0] += total_time
         combined_averages[stop_pair][1] += count
 
-# Salva os dados combinados
+# Salva os dados combinados 
 print("\n📦 Saving combined averages...")
 with open(f"{output_path}/combined_sum_amount.pkl", "wb") as f:
     pickle.dump(combined_averages, f)

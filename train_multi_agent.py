@@ -1,7 +1,7 @@
 import os
 import pickle
 import networkx as nx
-from multi_agent_sunt_env import parallel_env  # seu novo env multiagente
+from multi_agent_sunt_env import parallel_env # Importa o ambiente multiagente
 
 if __name__ == "__main__":
     # Carrega o grafo urbano do SUNT
@@ -9,7 +9,7 @@ if __name__ == "__main__":
         G = pickle.load(f)
 
     # Cria o ambiente com 2 agentes
-    env = parallel_env(network=G, actions_amount=9, max_steps=100, num_agents=2)
+    env = parallel_env(network=G, actions_amount=9, max_steps=100, num_agents=3)
 
     # Inicializa o ambiente
     observations, infos = env.reset()

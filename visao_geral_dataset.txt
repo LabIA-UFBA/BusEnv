@@ -1,0 +1,57 @@
+Total de pares: 5393
+
+Exemplos dos primeiros 5 pares:
+ [(('44782944', '44784618'), [309447.88332, 3216]), (('44784618', '44784340'), [153373.04998599997, 3216]), (('44784340', '44782337'), [55285.916665000004, 336]), (('44782337', '44784470'), [5414584.464612001, 30897]), (('44784470', '45834599'), [56705.499999, 336])]
+
+--- BOARDING ---
+Colunas: ['registers', 'start_trip', 'end_trip', 'tolerance', 'integration', 'cod_card', 'stop_time', 'register_time', 'service_code', 'route_short_name', 'vehicle_afc', 'vehicle', 'stop_id', 'order', 'direction_id', 'trip_em', 'dif_boarding', 'trip_location', 'classification', 'motive', 'trip', 'set_nb', 'route_short_name_nb', 'vehicle_nb', 'stop_id_nb', 'diff_nb', 'motive_pe', 'target_boarding']
+
+Primeiras 5 linhas:
+    registers          start_trip  ...    motive_pe target_boarding
+0          1 2024-03-02 10:22:09  ...  single trip       irregular
+1          1 2024-03-02 21:47:39  ...  single trip       irregular
+2          1 2024-03-02 13:58:57  ...  single trip       irregular
+3          1 2024-03-02 19:30:10  ...  single trip       irregular
+4          1 2024-03-02 06:09:57  ...  single trip       irregular
+
+[5 rows x 28 columns]
+
+--- LANDING ---
+Colunas: ['tripuserid', 'stop_time_ali', 'stop_id_ali', 'order_ali', 'walk_target', 'trip_ali', 'walk_dis', 'walk_time', 'walk_speed', 'diff_de_pe', 'wait_time', 'trip_dis', 'trip_time', 'vel_media', 'bridge', 'bridge_type', 'bridge_id', 'chain', 'target_ws', 'target_avs', 'target_tt', 'target_td', 'target_alighting']
+
+Primeiras 5 linhas:
+                       tripuserid  ...         target_alighting
+0  02310032103234_20240302114022  ...  walk_distance_irregular
+1  02310032103234_20240302114037  ...  walk_distance_irregular
+2  02310032484024_20240302112854  ...                       ok
+3  02310032484024_20240302112902  ...                       ok
+4  02310032911237_20240302133331  ...  walk_distance_irregular
+
+[5 rows x 23 columns]
+
+--- TRIPS ---
+Colunas: ['linha_atend', 'linha', 'cod_ate', 'sentido', 'shape', 'ordem', 'stop_id', 'lat', 'lon', 'distancias', 'acumulado', 'posicao', 'veiculo', 'trip', 'trip_id', 'inicio_viagem', 'fim_viagem', 'set', 'hora_ponto', 'saida', 'fill', 'tempo_parada', 'duracao', 'tempo_total', 'tempo_parada_acum', 'duracao_acum', 'distancia', 'dis_acum', 'vm', 'vm_acum', 'type']
+
+Primeiras 5 linhas:
+   linha_atend linha cod_ate sentido  ...  dis_acum          vm    vm_acum  type
+0  0420_54328  0420   54328       I  ...  0.000000    0.000000   0.000000   bus
+1  0420_54328  0420   54328       I  ...  0.000000  173.968130   0.000000   bus
+2  0420_54328  0420   54328       I  ...  0.338271   28.876640  20.996154   bus
+3  0420_54328  0420   54328       I  ...  0.747357   43.374691  24.458959   bus
+4  0420_54328  0420   54328       I  ...  1.373880   20.349540  26.449035   bus
+
+[5 rows x 31 columns]
+
+--- TOP 10 PARADAS COM MAIS EMBARQUES ---
+stop_id
+nan          57282
+44042532     32111
+43768720     26070
+66292237     24304
+LPA          20049
+ANR          16889
+AGC          16313
+ARP          15971
+350375938    15959
+PRJ          15563
+dtype: int64
