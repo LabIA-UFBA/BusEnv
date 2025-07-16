@@ -1,5 +1,6 @@
 venv/
 sunt/
+SUNT/
 results/
 tensorboard_graph_exploration/
 logs.txt

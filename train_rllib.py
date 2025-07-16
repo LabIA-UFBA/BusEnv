@@ -16,21 +16,38 @@ from ray.rllib.utils.pre_checks.env  import check_env
 
 def env_creator(config):
     import pickle
-    from multi_agent_sunt_env import parallel_env # Importando o ambiente multiagente personalizado
+    from multi_agent_sunt_env import parallel_env # Importando o ambiente personalizado
 
-    with open('./sunt/graph_designer/graph_gtfs.gpickle', 'rb') as f:
+    with open('./SUNT/data/graph_designer/graph_gtfs_fev_2024.gpickle', 'rb') as f:
         G = pickle.load(f)
 
-    env = parallel_env( # Criando o ambiente multiagente
+    # Carrega os arquivos de observação 
+    with open("output_obs/avg_travel_time_AB.pkl", "rb") as f:
+        avg_travel_time_AB = pickle.load(f)
+
+    with open("output_obs/future_demand_at_B.pkl", "rb") as f:
+        future_demand_at_B = pickle.load(f)
+
+    with open("output_obs/occupancy_rate.pkl", "rb") as f:
+        occupancy_rate = pickle.load(f)
+
+    with open("output_obs/uptime_normalized.pkl", "rb") as f:
+        uptime_normalized = pickle.load(f)
+
+    env = parallel_env(
         network=G,
-        actions_amount=9,
+        actions_amount=3,
         max_steps=100,
-        num_agents=2
+        num_agents=2,
+        avg_travel_time_AB=avg_travel_time_AB,
+        future_demand_at_B=future_demand_at_B,
+        occupancy_rate=occupancy_rate,
+        uptime_normalized=uptime_normalized
     )
+
     env = pad_observations_v0(env)
     env = pad_action_space_v0(env)
-    env = ParallelPettingZooEnv(env) # Convertendo o ambiente para o formato compatível com Ray RLlib
-    # env = parallel_to_aec(env)
+    env = ParallelPettingZooEnv(env)
 
     check_env(env) # Verificando se o ambiente está correto para uso com Ray RLlib
 

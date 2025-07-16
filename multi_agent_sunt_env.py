@@ -6,6 +6,7 @@ import numpy as np
 import random
 import pickle
 import gymnasium.utils.seeding  # Importar seeding
+from gymnasium.spaces import Discrete
 
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
@@ -15,7 +16,11 @@ class parallel_env(ParallelEnv):
     # stopClass: Classe de parada personalizada (opcional)
     # rewardClass: Classe de recompensa personalizada (opcional)
     # initial_nodes, target_nodes: nós de início e destino (se não passados, são escolhidos aleatoriamente)
-    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None, render_mode=None, boarding_df=None, landing_df=None, trips_df=None):
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, stopClass=None, rewardClass=None,
+                initial_nodes=None, target_nodes=None, render_mode=None,
+                avg_travel_time_AB=None, future_demand_at_B=None,
+                occupancy_rate=None, uptime_normalized=None):
+
         self.network = network
         self.actions_amount = actions_amount
         self.max_steps = max_steps
@@ -25,59 +30,73 @@ class parallel_env(ParallelEnv):
         self.stop = DefaultStopClass() if stopClass is None else stopClass 
         self.reward = DefaultReward() if rewardClass is None else rewardClass 
 
-        self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))} # Mapeia nós para índices
-        self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()} # Mapeia índices para nós
+        self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))}  # Mapeia nós para índices
+        self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}  # Mapeia índices para nós
 
         # Cria os agentes
         self.possible_agents = [f"agent_{i}" for i in range(num_agents)]
-        self.agent_name_mapping = dict(zip(self.possible_agents, list(range(num_agents)))) # Mapeia nomes de agentes para índices
-        
+        self.agent_name_mapping = dict(zip(self.possible_agents, list(range(num_agents))))  # Mapeia nomes de agentes para índices
+
         # Estados individuais
-        self.states = {}   # Guarda o nó atual de cada agente
-        self.targets = {}  # Guarda o nó alvo de cada agente
-        self.steps = {}    # Contador de passos por agente
-        self.delays = {}   # Dicionário de delays por agente
+        self.states = {}           # Guarda o nó atual de cada agente
+        self.targets = {}          # Guarda o nó alvo de cada agente
+        self.steps = {}            # Contador de passos por agente
+        self.delays = {}           # Dicionário de delays por agente
         self.estimated_times = {}  # Tempo estimado percorrido por agente
         self.expected_times = {}   # Tempo ótimo (ideal) por agente
 
         self.initial_nodes = initial_nodes
         self.target_nodes = target_nodes
 
-        # Novos elementos para observações e recompensas (baseado na estrutura da imagem)
+        # === Substitui os dados derivados de DataFrames por observações prontas ===
 
-        ## 1. Dados de demanda
-        self.boarding_demand = self._extrair_demanda_de_embarque(boarding_df)
-        self.alighting_demand = self._extrair_demanda_de_desembarque(landing_df)
+        self.avg_travel_time_AB = avg_travel_time_AB           # (nodeA, nodeB) -> tempo médio
+        self.future_demand_at_B = future_demand_at_B           # node_id -> demanda estimada
+        self.occupancy_rate = occupancy_rate                   # agent_id -> taxa de ocupação (0.0 a 1.0)
+        self.uptime_normalized = uptime_normalized             # agent_id -> tempo de operação (0.0 a 1.0)
 
-        ## 2. Grafo com tempos reais e posições
-        self.edge_times = self._extrair_tempos_de_arestas(trips_df)         # (a, b) -> tempo médio
-        self.stop_coords = self._extrair_coordenadas_de_paradas(trips_df)       # stop_id -> (lat, lon)
+        # Relógio global da simulação (começa às 6h00)
+        self.current_time = 6 * 60 * 60  # começa às 6h00, em segundos
+        self.headways = {}         # Histórico de chegada por ponto
+        self.sync_stats = {}       # Regularidade dos veículos nas paradas
 
-        ## 3. Tempo atual e controle de sincronização
-        self.current_time = 6 * 60  # Começa às 6h00 (em minutos) "relógio global" da simulação. Começa às 6h00 e avança a cada passo
-        self.headways = {}         # stop_id -> armazena o histórico de tempos de chegada dos ônibus em cada parada
-        self.sync_stats = {}       # controle de regularidade por ponto (se os ônibus estão espaçados igualmente, evitando comboios) (Ver Como tratar isso no treinamento)
+        self.service_center_node = random.choice(list(self.network.nodes))
 
-        ## 4. Estado dos agentes
+        # Estado interno dos agentes
         self.agents = {}
-        for agent_id in self.possible_agents: # Inicializa um dicionário com o estado individual de cada ônibus para a observação e recompensa
+        for agent_id in self.possible_agents:
             self.agents[agent_id] = {
-                "location": None, # posição atual do agente
-                "occupancy": 0.0, # taxa de ocupação (0.0 a 1.0)
-                "uptime": 1.0, # tempo de atividade (0.0 a 1.0)
-                "fuel": 100.0, # 100% de combustível
-                "maintenance_status": "ok", # status de manutenção
-                "schedule": [],     # se você for simular horários
+                "location": None,
+                "occupancy": self.occupancy_rate.get(agent_id, 0.0),  # Inicializa com valor real se houver
+                "uptime": self.uptime_normalized.get(agent_id, 1.0),  # Idem
+                "fuel": 100.0,
+                "maintenance_status": "ok",
+                "schedule": [],
+                "route": None,                  # Lista de nós
+                "route_idx": 0,                  # Começa no início da rota
+                "needs_service": False          # Flag para manutenção
             }
 
-        ## 5. Parâmetros de recompensa
-        self.reward_weights = { # Controla como calcular a recompensa a ideia é permitir que você module o peso de cada termo
-            "occ_penalty": 1.0, # Penalidade por ocupação
-            "uptime_bonus": 1.0, # Bônus por tempo de atividade
-            "sync_score": 1.0, # Pontuação de sincronização
-            "energy_efficiency": 1.0 # Eficiência energética
+            # self.action_space = Discrete(3)  # Espaço de ação discreto (3 ações possíveis: 0, 1, 2)
+
+        # Parâmetros de recompensa
+        self.reward_weights = {
+            "occ_penalty": 1.0,
+            "uptime_bonus": 1.0,
+            "sync_score": 1.0,
+            "energy_efficiency": 1.0
         }
-        self.occupancy_range = (0.6, 0.9) # Faixa de ocupação (60% a 90%), define o intervalo ideal para ocupação (penaliza se o ônibus estiver muito cheio ou muito vazio). PROVISORIO
+        self.occupancy_range = (0.6, 0.9)  # Faixa ideal de ocupação
+
+        # Apenas para compatibilidade futura com wrappers que esperam .observation_spaces e .action_spaces
+        self.observation_spaces = {agent: self.observation_space(agent) for agent in self.possible_agents}
+        self.action_spaces = {agent: self.action_space(agent) for agent in self.possible_agents}
+
+        self.default_travel_time = np.mean(list(self.avg_travel_time_AB.values())) # Tempo médio de viagem padrão
+        self.max_travel_time = 3250.0 # Tempo maximo encontrado no dataset (5 minutos e 25 segundos)
+ 
+
+
 
     @property
     def num_agents(self):
@@ -87,99 +106,86 @@ class parallel_env(ParallelEnv):
         if seed is not None:
             self.np_random = gymnasium.utils.seeding.np_random(seed)
 
-        self.agents = self.possible_agents[:]
-
+        self.agents = self.possible_agents[:]  # Reinicia lista de agentes ativos
         self.states = {}
         self.targets = {}
         self.steps = {}
         self.delays = {}
         self.estimated_times = {}
         self.expected_times = {}
-
-        self.current_time = 6 * 60  # Reinicia o relógio global para 6h00
-
-        self.headways = {stop: [] for stop in self.stop_coords}  # Reinicia o histórico de tempos de chegada dos ônibus em cada parada
-        self.sync_stats = {stop: {"expected":0, "actual": []} for stop in self.stop_coords}  # Reinicia o controle de regularidade por ponto
-
-        self.agents_state = {}  # Reinicia o estado dos agentes
+        self.current_time = 6 * 60 * 60  # Reinicia o relógio global para 6h00 (em segundos)
+        self.headways = {}  # trabalhando direto com dados agregados
+        self.sync_stats = {}  # Regularidade dos veículos nas paradas
+        self.agents_state = {}
         observations = {}
         infos = {}
 
         available_nodes = list(self.network.nodes)
 
-       # print(self.boarding_demand if self.boarding_demand else "Nenhuma demanda de embarque disponível.")
-       # print(self.alighting_demand if self.alighting_demand else "Nenhuma demanda de desembarque disponível.")
-       # print(self.edge_times if self.edge_times else "Nenhum tempo de aresta disponível.")
-       # print(self.stop_coords if self.stop_coords else "Nenhuma coordenada de parada disponível.")
-
-        for agent in self.agents: # Inicializa cada agente
+        for agent in self.agents:
             initial = random.choice(available_nodes)
             target = random.choice(available_nodes)
             
             while target == initial and len(available_nodes) > 1:
                 target = random.choice(available_nodes)
 
-            # Estado interno do agente 
+            # Estado interno do agente
             self.agents_state[agent] = {
-                "location": initial, # Posição inicial do agente
-                "occupancy":0.0, # Taxa de ocupação inicial (0.0 a 1.0)
-                "uptime": 1.0, # Tempo de atividade inicial
-                "fuel": 100.0, # Combustível inicial (100%)
-                "maintenance_status": "ok", # Status de manutenção inicial
-                "schedule": [], # Horário inicial (se for simular horários)
+                "location": initial,
+                "occupancy": float(self.occupancy_rate.get((initial, target), 0.0)),  # taxa de ocupação
+                "uptime": float(self.uptime_normalized.get(agent, 1.0)),  # tempo de operação
+                "fuel": 100.0,
+                "maintenance_status": "ok",
+                "schedule": [],
             }
-            
-            # Grava os estados
+
             self.states[agent] = initial
             self.targets[agent] = target
             self.steps[agent] = 0
             self.estimated_times[agent] = 0
-            self.delays[agent] = {}  # Se quiser simular delays individuais
+            self.delays[agent] = {}
 
-            # Chama sua função de delay
-            self.generate_random_delay(initial, target)
-
-            # Define peso com delays dinâmicos (padrão 1)
-            def edge_weight(u, v, d):
-                key = (min(str(u), str(v)), max(str(u), str(v)))
-                return self.reward.waitTimeDict.get(key, (1, 1))[0]
-
-            # Calcula o caminho ótimo com Dijkstra
+            # calcula o caminho mais curto entre o nó inicial e o alvo
             try:
-                path = nx.shortest_path(self.network, initial, target, weight=edge_weight)
-                self.expected_times[agent] = sum(
-                    self.reward.waitTimeDict.get(
-                        (min(str(path[i]), str(path[i+1])), max(str(path[i]), str(path[i+1]))),
-                        (1, 1)
-                    )[0]
-                    for i in range(len(path) - 1)
-                )
+                path = nx.shortest_path(self.network, initial, target, weight="travel_time")
             except nx.NetworkXNoPath:
-                self.expected_times[agent] = float("inf")
+                path = []
+            
+            self.agents_state[agent]["route"] = path
+            self.agents_state[agent]["route_idx"] = 0
+            self.targets[agent] = path[-1] if path else target  # garante que o alvo seja o último nó do caminho
 
-            # Observação inicial: (estado atual, destino)
+            # Calcula o tempo esperado com base em dados reais
+            self.expected_times[agent] = sum(
+                self.avg_travel_time_AB.get((path[i], path[i + 1]), self.default_travel_time) # Usa o tempo médio de viagem padrão se não houver dados
+                for i in range(len(path) - 1)
+            ) if path else float("inf")
+
+            travel_time = self.avg_travel_time_AB.get((initial, target), self.default_travel_time)
+            normalized_travel_time = min(travel_time / self.max_travel_time, 1.0) # Normaliza o tempo de viagem para 0.0 a 1.0
+
+            # Cria observação baseada na estrutura definida
             observations[agent] = np.array([
-                self.node_to_idx[initial],
-                self.node_to_idx[target]
-            ], dtype=np.int64)
+                self.current_time / (24 * 60 * 60),  # current_time_normalized (0.0 a 1.0)
+                self.occupancy_rate.get((initial, target), 0.0),  # occupancy_rate
+                normalized_travel_time,  # avg_travel_time_AB
+                self.future_demand_at_B.get(target, 0.0),  # future_demand_at_B
+                self.uptime_normalized.get(agent, 1.0),  # uptime_normalized
+                1.0 if self.agents_state[agent]["maintenance_status"] == "ok" else 0.0,  # maintenance_status
+                self.node_to_idx[initial],  # curr_node_id_norm
+                self.node_to_idx[target],  # next_node_id_norm
+            ], dtype=np.float32)
 
-            infos[agent] = { # Informações adicionais para cada agente
-                "path": path if 'path' in locals() else [], # Caminho ótimo calculado
-                "expected_time": self.expected_times[agent] # Tempo esperado para o caminho
+            infos[agent] = {
+                "path": path,
+                "expected_time": self.expected_times[agent],
             }
 
         return observations, infos
 
+
     
     def step(self, actions):
-        """
-        Parâmetro:
-            actions: dict do tipo {agent_0: action_0, agent_1: action_1, ...}
-
-        Retorna:
-            observations, rewards, terminations, truncations, infos
-            (todos no formato dict por agente)
-        """
         if not actions:
             self.agents = []
             return {}, {}, {}, {}, {}
@@ -192,101 +198,156 @@ class parallel_env(ParallelEnv):
 
         for agent in self.agents:
             self.steps[agent] += 1
-            previous_state = self.states[agent]
-            neighbors = list(self.network.neighbors(previous_state))
+            state = self.agents_state[agent]
+            route = state["route"]
+            idx = state["route_idx"]
+            
+            print(f"AGENTE: {agent}, IDX: {idx}, ROTA: {route}")
+            if idx >= len(route):
+                print(f"[ERRO] Agente {agent} excedeu a rota. IDX={idx}, TAM={len(route)}")
+                continue  # ou return terminateds, truncateds, rewards, obs, infos
 
-            # Ação inválida: penaliza e trunca
-            if actions[agent] >= len(neighbors):
-                reward = -150
+            curr_node = route[idx]
+
+            action = actions[agent]
+
+            if action == 0: # WAIT
+                reward = -0.1  # penalidade leve
+                self.current_time += 1
+                terminated = False
+                truncated = False
+
+            elif action == 1: # MOVE_TO next stop
+                if idx + 1 < len(route):
+                    next_node = route[idx + 1]
+                    travel_time = self.avg_travel_time_AB.get((curr_node, next_node))
+                    if travel_time is None:
+                        # print(f"[WARN] Tempo de viagem ausente para ({curr_node}, {next_node}). Usando fallback.")
+                        travel_time = self.default_travel_time # Usa o tempo médio de viagem padrão se não houver dados
+
+                    occupancy = self.occupancy_rate.get((curr_node, next_node), 0.0)
+                    self.current_time += travel_time
+                    self.estimated_times[agent] += travel_time
+
+                    self.agents_state[agent]["route_idx"] += 1
+                    self.agents_state[agent]["occupancy"] = occupancy
+                    self.states[agent] = next_node
+
+                    if next_node not in self.headways:
+                        self.headways[next_node] = []
+                    self.headways[next_node].append(self.current_time)
+
+                    reward = self.reward.getReward(
+                        new_state=next_node,
+                        previous_state=curr_node,
+                        action=action,
+                        target=route[-1],
+                        network=self.network,
+                        estimated_time=self.estimated_times[agent],
+                        expected_time=self.expected_times[agent],
+                        delay=0,
+                        agent_state=state,
+                        headways=self.headways[next_node]
+                    )
+
+                    terminated = next_node == route[-1]  # fim da rota?
+                    truncated = self.steps[agent] >= self.max_steps
+
+                else:
+                    # Já está no último ponto da rota: penaliza se tentar mover de novo
+                    reward = -1.0
+                    terminated = False
+                    truncated = False
+
+            elif action == 2:
+                # SERVICE_CENTER
+                sc_node = self.get_nearest_service_center(curr_node)
+                travel_time = self.avg_travel_time_AB.get((curr_node, sc_node), self.default_travel_time) # Usa o tempo médio de viagem padrão se não houver dados
+                self.current_time += travel_time
+                self.estimated_times[agent] += travel_time
+
+                # Reset de manutenção, combustível, uptime
+                self.agents_state[agent]["fuel"] = 100.0
+                self.agents_state[agent]["uptime"] = 1.0
+                self.agents_state[agent]["maintenance_status"] = "ok"
+                self.states[agent] = sc_node
+
+                reward = -0.5  # pequeno custo por manutenção
+                terminated = False
+                truncated = self.steps[agent] >= self.max_steps
+
+            else:
+                # Ação inválida
+                reward = -10.0
                 terminated = False
                 truncated = True
-                obs = np.array([
-                    self.node_to_idx[self.states[agent]],
-                    self.node_to_idx[self.targets[agent]]
-                ], dtype=np.int64)
 
-                observations[agent] = obs
-                rewards[agent] = reward
-                terminations[agent] = terminated
-                truncations[agent] = truncated
-                infos[agent] = {"invalid_action": True}
-                continue
+            # Atualiza observação
+            curr_node = self.states[agent]
+            route_idx = self.agents_state[agent]["route_idx"]
+            next_node = route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
 
-            # Move para o novo estado
-            new_state = neighbors[actions[agent]]
-            self.states[agent] = new_state
 
-            # --- 1. Tempo de deslocamento (sem delays reais por enquanto) ---
-            edge = (min(str(previous_state), str(new_state)), max(str(previous_state), str(new_state)))
-            wait_time, _ = self.reward.waitTimeDict.get(edge, (1, 1))
-            # delay = self.dynamicDelays.get(edge, 0)
-            total_time = wait_time # + delay 
-            self.estimated_times[agent] += total_time
-            self.current_time += total_time # Avança o relógio global
+            travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+            normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
-            # --- 2. Ocupação do agente (simples por enquanto) ---
-            boarding = self.boarding_demand.get(new_state, 0) # Demanda de embarque na nova parada
-            alighting = self.alighting_demand.get(new_state, 0) # Demanda de desembarque na nova parada
-            old_occupancy = self.agents_state[agent]["occupancy"] # Ocupação anterior do agente
-            new_occupancy = max(0.0, min(1.0, old_occupancy + (boarding - alighting) / 100.0)) # Atualiza a ocupação do agente (normaliza entre 0.0 e 1.0)
+            # print("print(self.current_time) ", self.current_time)
 
-            self.agents_state[agent]["occupancy"] = new_occupancy # Atualiza o estado do agente
+            observations[agent] = np.array([
+                self.current_time / (24 * 60 * 60),  # current_time_normalized (0.0 a 1.0)
+                self.occupancy_rate.get((curr_node, next_node), 0.0),
+                normalized_travel_time, # Usa o tempo médio de viagem padrão se não houver dados
+                self.future_demand_at_B.get(next_node, 0.0),
+                self.uptime_normalized.get(agent, 1.0),
+                1.0 if self.agents_state[agent]["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[curr_node],
+                self.node_to_idx[next_node],
+            ], dtype=np.float32)
 
-            # --- 3. Headways (controle de sincronização) ---
-            if new_state in self.headways:
-                self.headways[new_state] = []
-            
-            self.headways[new_state].append(self.current_time) # Adiciona o tempo atual ao histórico de headways
-
-            # --- 4. Recompensa ---
-            # Calcula recompensa e término do episódio para o agente
-            reward = self.reward.getReward(
-                new_state, previous_state, actions[agent], self.targets[agent],
-                self.network, self.estimated_times[agent], self.expected_times[agent], 0,  # delay = 0
-                agent_state=self.agents_state[agent],
-                headways=self.headways[new_state]
-            )
-
-            terminated = self.stop.isTerminated(
-                new_state, previous_state, actions[agent], self.targets[agent], self.network
-            )
-
-            truncated = self.steps[agent] >= self.max_steps
-
-            obs = np.array([
-                self.node_to_idx[new_state], # Estado atual do agente
-                self.node_to_idx[self.targets[agent]] # Destino do agente
-            ], dtype=np.int64)
-
-            observations[agent] = obs
             rewards[agent] = reward
             terminations[agent] = terminated
             truncations[agent] = truncated
-            infos[agent] = { # Informações adicionais para cada agente
+            infos[agent] = {
                 "count": self.steps[agent],
-                "occupancy": new_occupancy, # Taxa de ocupação atual do agente
-                "time_spent": self.estimated_times[agent], # Tempo total estimado percorrido pelo agente
-                "headways": self.headways[new_state], # Histórico de tempos de chegada dos ônibus na nova parada
+                "occupancy": self.agents_state[agent]["occupancy"],
+                "location": curr_node,
+                "next_stop": next_node,
+                "headways": self.headways.get(curr_node, []),
             }
 
-        # Remove agentes que terminaram ou truncaram
         self.agents = [
             agent for agent in self.agents if not (terminations[agent] or truncations[agent])
         ]
 
-        if self.render_mode == "human": # Renderiza o ambiente se o modo de renderização for "human"
+        if self.render_mode == "human":
             self.render()
 
         return observations, rewards, terminations, truncations, infos
 
 
-    @functools.lru_cache(maxsize=None) # Decorador para cache de resultados
-    def observation_space(self, agent): # Define o espaço de observação para cada agente
+    @functools.lru_cache(maxsize=None)
+    def observation_space(self, agent):
         return spaces.Box(
-            low=0,
-            high=len(self.network.nodes()) - 1,
-            shape=(2,),
-            dtype=np.int64
+            low=np.array([
+                0.0,    # time_of_day_norm
+                0.0,    # occupancy_rate
+                0.0,    # avg_travel_time_AB (normalizado)
+                0.0,    # future_demand_at_B
+                0.0,    # uptime
+                0.0,    # maintenance_status
+                0.0,    # curr_node_id
+                0.0     # next_node_id
+            ], dtype=np.float32),
+            high=np.array([
+                1.0,    # time_of_day_norm
+                1.0,    # occupancy_rate
+                1.0,    # avg_travel_time_AB (normalizado!)
+                1e6,    # future_demand_at_B (mantém valor realista)
+                1.0,    # uptime
+                1.0,    # manutenção ok
+                2e9,    # curr_node_id
+                2e9     # next_node_id
+            ], dtype=np.float32)
         )
 
     @functools.lru_cache(maxsize=None)
@@ -334,37 +395,10 @@ class parallel_env(ParallelEnv):
 
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             self.dynamicDelays = {}
-    
-    def _extrair_demanda_de_embarque(self, boarding_df):
-        # Agrupa embarques por stop_id
-        if boarding_df is None:
-            return {}
-        return dict(boarding_df.groupby("stop_id")["registers"].sum())
 
-    def _extrair_demanda_de_desembarque(self, landing_df):
-        # Agrupa desembarques por stop_id_ali
-        if landing_df is None:
-            return {}
-        return dict(landing_df.groupby("stop_id_ali").size())
-
-    def _extrair_tempos_de_arestas(self, trips_df):
-        if trips_df is None:
-            return {}
-        edge_times = {}
-        grouped = trips_df.groupby("trip")
-        for _, trip_data in grouped:
-            trip_data = trip_data.sort_values("hora_ponto")
-            stops = trip_data["stop_id"].tolist()
-            times = trip_data["tempo_total"].tolist()
-            for i in range(len(stops)-1):
-                pair = (stops[i], stops[i+1])
-                edge_times[pair] = times[i+1]  # tempo entre paradas
-        return edge_times
-
-    def _extrair_coordenadas_de_paradas(self, trips_df):
-        if trips_df is None:
-            return {}
-        return dict(zip(trips_df["stop_id"], zip(trips_df["lat"], trips_df["lon"])))
+    def get_nearest_service_center(self, current_node):
+        # Encontra o nó mais próximo do centro de serviço, ainda não está dinamico
+        return self.service_center_node
 
 # Essa é a classe base para as classes de recompensa e parada
 class RewardBaseClass():
@@ -384,53 +418,55 @@ class DefaultReward(RewardBaseClass):
             self.waitTimeDict = pickle.load(f)
         
         self.reward_weights = reward_weights or {
-            "occ_penalty": 1.0, # W1
-            "uptime_bonus": 1.0, # W2
-            "sync_score": 1.0, # W3
-            "energy_efficiency": 1.0 # W4
+            "occ_penalty": 1.0,         # W1
+            "uptime_bonus": 1.0,        # W2
+            "sync_score": 1.0,          # W3
+            "energy_efficiency": 1.0    # W4
         }
-        self.occupancy_range = occupancy_range  # Faixa de ocupação ideal (60% a 90%)
 
-    def getReward(self, new_state, previous_state, action, target, graph, est_time, expected_time, delay, agent_state=None, headways=None):
-        
-        reward = 0.0 
+        self.occupancy_range = occupancy_range  # Faixa ideal (ex: 60% a 90%)
+
+    def getReward(self, new_state, previous_state, action, target, network, estimated_time, expected_time, delay, agent_state=None, headways=None):
+        reward = 0.0
 
         # 1. Penalidade por ocupação fora da faixa ideal
         if agent_state is not None:
-            occupancy = agent_state["occupancy"]
+            occupancy = agent_state.get("occupancy", 0.0)
             min_occ, max_occ = self.occupancy_range
             if occupancy < min_occ:
                 occ_penalty = (min_occ - occupancy) ** 2 # Penaliza se a ocupação estiver abaixo do mínimo
             elif occupancy > max_occ:
                 occ_penalty = (occupancy - max_occ) ** 2 # Penaliza se a ocupação estiver acima do máximo
             else:
-                occ_penalty = 0.0 # Ocupação ideal, sem penalidade
+                occ_penalty = 0.0
             reward -= self.reward_weights["occ_penalty"] * occ_penalty
-        
-        # 2. Bônus por uptime — quanto mais ativo, melhor
+
+        # 2. Bônus por uptime
         if agent_state is not None:
-            uptime = agent_state("uptime", 1,0) # Tempo de atividade do agente (0.0 a 1.0)
-            reward += self.reward_weights["uptime_bonus"] * uptime # Bônus proporcional ao uptime
-        
-        # 3.Regularidade (headways) - Pontuação de sincronização — quanto mais espaçados, melhor
+            uptime = agent_state.get("uptime", 1.0) # tempo de atividade normalizado (0.0 a 1.0)
+            reward += self.reward_weights["uptime_bonus"] * uptime # Bônus proporcional ao uptime   
+
+        # 3. Regularidade (sincronização/headways)
         sync_score = 0.0
         if headways and len(headways) > 1:
-            intervals = [headways[i+1] - headways[i] for i in range(len(headways) - 1)]
+            intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)] # Calcula os intervalos entre chegadas no ponto de onibus
             if intervals:
-                avg_interval = sum(intervals) / len(intervals)
+                avg_interval = sum(intervals) / len(intervals) # Intervalo médio
                 std = (sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)) ** 0.5 # Desvio padrão dos intervalos
-                sync_score = -std # quanto mais regular (menor desvio padrão), melhor
-                reward += self.reward_weights["sync_score"] * sync_score
-        
-        # 4. Eficiência energética (quanto menor o tempo/delay, melhor)
-        travel_efficiency = max(0.0, 1 - (est_time / (expected_time + 1e-5))) # Evita divisão por zero
-        reward += self.reward_weights["energy_efficiency"] * travel_efficiency # Bônus proporcional
+                sync_score = -std  # Penaliza irregularidade
+                reward += self.reward_weights["sync_score"] * sync_score # Bônus proporcional à regularidade
 
+        # 4. Eficiência energética (estimado vs esperado)
+        if expected_time > 0:
+            travel_efficiency = max(0.0, 1 - (estimated_time / expected_time))
+            reward += self.reward_weights["energy_efficiency"] * travel_efficiency
+        else:
+            reward += 0.0  # Nenhum bônus se não houver tempo esperado
 
-        return reward # Essa é a recompensa final calculada com base nos critérios definidos
+        return reward
 
 
 # Essa é a classe padrão de parada, que termina o episódio quando o agente chega ao nó alvo   
 class DefaultStopClass(StopConditionBaseClass):
     def isTerminated(self, state, previousState, action, target, graph):
-        return state == target
+        return state == target or action == 2

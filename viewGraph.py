@@ -1,15 +1,15 @@
 import networkx as nx
 import matplotlib
-matplotlib.use('TkAgg')  # ou 'Qt5Agg' se você tiver o PyQt5 instalado
+matplotlib.use('Agg')  # Usa backend sem interface gráfica
 import matplotlib.pyplot as plt
 import pickle
-import os
 
-with open('./sunt/graph_designer/graph_gtfs.gpickle', 'rb') as f:
+with open('./SUNT/data/graph_designer/graph_gtfs_fev_2024.gpickle', 'rb') as f:
     G = pickle.load(f)
 
 print("Nós:", G.nodes())
 print("Arestas:", G.edges())
 
 nx.draw(G, with_labels=True)
-plt.show()
+plt.savefig("graph_output.png")  # Salva o gráfico como imagem
+print("Gráfico salvo como 'graph_output.png'")
