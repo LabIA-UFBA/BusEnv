@@ -16,12 +16,13 @@ from ray.rllib.utils.pre_checks.env  import check_env
 
 def env_creator(config):
     import pickle
-    from multi_agent_sunt_env import parallel_env # Importando o ambiente personalizado
+    from multi_agent_sunt_env import parallel_env  # Importa o ambiente personalizado
 
+    # === Carrega o grafo ===
     with open('./SUNT/data/graph_designer/graph_gtfs_fev_2024.gpickle', 'rb') as f:
         G = pickle.load(f)
 
-    # Carrega os arquivos de observação 
+    # === Carrega os arquivos de observações ===
     with open("output_obs/avg_travel_time_AB.pkl", "rb") as f:
         avg_travel_time_AB = pickle.load(f)
 
@@ -34,6 +35,14 @@ def env_creator(config):
     with open("output_obs/uptime_normalized.pkl", "rb") as f:
         uptime_normalized = pickle.load(f)
 
+    # === Carrega as rotas reais e seus metadados ===
+    with open("output_obs/rotas_reais.pkl", "rb") as f:
+        real_routes = pickle.load(f)
+
+    with open("output_obs/rotas_metadata.pkl", "rb") as f:
+        route_metadata = pickle.load(f)
+
+    # === Cria o ambiente ===
     env = parallel_env(
         network=G,
         actions_amount=3,
@@ -42,14 +51,17 @@ def env_creator(config):
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
         occupancy_rate=occupancy_rate,
-        uptime_normalized=uptime_normalized
+        uptime_normalized=uptime_normalized,
+        real_routes=real_routes,
+        route_metadata=route_metadata  # <-- Passa as rotas reais e metadados
     )
 
+    # === Wrappers ===
     env = pad_observations_v0(env)
     env = pad_action_space_v0(env)
     env = ParallelPettingZooEnv(env)
 
-    check_env(env) # Verificando se o ambiente está correto para uso com Ray RLlib
+    check_env(env)  # Valida se está compatível com RLlib
 
     return env
 
@@ -92,7 +104,7 @@ tuner = Tuner(
         name="ppo_sunt_experiment",
         checkpoint_config=ray.train.CheckpointConfig(
             checkpoint_at_end=True,
-            checkpoint_frequency=1
+            checkpoint_frequency=2
         ),
         verbose=1
     ),

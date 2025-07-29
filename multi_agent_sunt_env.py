@@ -16,10 +16,12 @@ class parallel_env(ParallelEnv):
     # stopClass: Classe de parada personalizada (opcional)
     # rewardClass: Classe de recompensa personalizada (opcional)
     # initial_nodes, target_nodes: nós de início e destino (se não passados, são escolhidos aleatoriamente)
-    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, stopClass=None, rewardClass=None,
-                initial_nodes=None, target_nodes=None, render_mode=None,
-                avg_travel_time_AB=None, future_demand_at_B=None,
-                occupancy_rate=None, uptime_normalized=None):
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2,
+                stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
+                render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
+                occupancy_rate=None, uptime_normalized=None,
+                real_routes=None, route_metadata=None):  
+
 
         self.network = network
         self.actions_amount = actions_amount
@@ -30,7 +32,9 @@ class parallel_env(ParallelEnv):
         self.stop = DefaultStopClass() if stopClass is None else stopClass 
         self.reward = DefaultReward() if rewardClass is None else rewardClass 
 
-        self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))}  # Mapeia nós para índices
+        self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)}
+
+        # self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))}  # Mapeia nós para índices
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}  # Mapeia índices para nós
 
         # Cria os agentes
@@ -94,6 +98,11 @@ class parallel_env(ParallelEnv):
 
         self.default_travel_time = np.mean(list(self.avg_travel_time_AB.values())) # Tempo médio de viagem padrão
         self.max_travel_time = 3250.0 # Tempo maximo encontrado no dataset (5 minutos e 25 segundos)
+
+        self.real_routes = real_routes or {}
+        self.route_metadata = route_metadata or {}
+        self.agent_routes = {}  # Mapeia agente -> rota fixa
+
  
 
 
@@ -123,20 +132,28 @@ class parallel_env(ParallelEnv):
         available_nodes = list(self.network.nodes)
 
         for agent in self.agents:
-            initial = random.choice(available_nodes)
-            target = random.choice(available_nodes)
-            
-            while target == initial and len(available_nodes) > 1:
-                target = random.choice(available_nodes)
+            # === Rota fixa para cada agente ===
+            if agent not in self.agent_routes:
+                trip_id, path = random.choice(list(self.real_routes.items()))
+                print(f"[DEBUG] Rota escolhida para {agent} (Trip ID: {trip_id}): {path}")
+                self.agent_routes[agent] = path
 
-            # Estado interno do agente
+            path = self.agent_routes[agent]
+            if len(path) < 2:
+                raise ValueError(f"Rota inválida para {agent}: {path}")
+
+            initial = path[0]
+            target = path[-1]
+
             self.agents_state[agent] = {
                 "location": initial,
-                "occupancy": float(self.occupancy_rate.get((initial, target), 0.0)),  # taxa de ocupação
-                "uptime": float(self.uptime_normalized.get(agent, 1.0)),  # tempo de operação
+                "occupancy": float(self.occupancy_rate.get(agent, 0.0)),
+                "uptime": float(self.uptime_normalized.get(agent, 1.0)),
                 "fuel": 100.0,
                 "maintenance_status": "ok",
                 "schedule": [],
+                "route": path,
+                "route_idx": 0
             }
 
             self.states[agent] = initial
@@ -145,40 +162,30 @@ class parallel_env(ParallelEnv):
             self.estimated_times[agent] = 0
             self.delays[agent] = {}
 
-            # calcula o caminho mais curto entre o nó inicial e o alvo
-            try:
-                path = nx.shortest_path(self.network, initial, target, weight="travel_time")
-            except nx.NetworkXNoPath:
-                path = []
-            
-            self.agents_state[agent]["route"] = path
-            self.agents_state[agent]["route_idx"] = 0
-            self.targets[agent] = path[-1] if path else target  # garante que o alvo seja o último nó do caminho
-
-            # Calcula o tempo esperado com base em dados reais
+            # Tempo esperado com base na rota
             self.expected_times[agent] = sum(
-                self.avg_travel_time_AB.get((path[i], path[i + 1]), self.default_travel_time) # Usa o tempo médio de viagem padrão se não houver dados
+                self.avg_travel_time_AB.get((path[i], path[i + 1]), self.default_travel_time)
                 for i in range(len(path) - 1)
-            ) if path else float("inf")
+            )
 
-            travel_time = self.avg_travel_time_AB.get((initial, target), self.default_travel_time)
-            normalized_travel_time = min(travel_time / self.max_travel_time, 1.0) # Normaliza o tempo de viagem para 0.0 a 1.0
+            next_node = path[1]
+            travel_time = self.avg_travel_time_AB.get((initial, next_node), self.default_travel_time)
+            normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
-            # Cria observação baseada na estrutura definida
             observations[agent] = np.array([
-                self.current_time / (24 * 60 * 60),  # current_time_normalized (0.0 a 1.0)
-                self.occupancy_rate.get((initial, target), 0.0),  # occupancy_rate
-                normalized_travel_time,  # avg_travel_time_AB
-                self.future_demand_at_B.get(target, 0.0),  # future_demand_at_B
-                self.uptime_normalized.get(agent, 1.0),  # uptime_normalized
-                1.0 if self.agents_state[agent]["maintenance_status"] == "ok" else 0.0,  # maintenance_status
-                self.node_to_idx[initial],  # curr_node_id_norm
-                self.node_to_idx[target],  # next_node_id_norm
+                self.current_time / (24 * 60 * 60),
+                self.occupancy_rate.get(agent, 0.0),
+                normalized_travel_time,
+                self.future_demand_at_B.get(next_node, 0.0),
+                self.uptime_normalized.get(agent, 1.0),
+                1.0 if self.agents_state[agent]["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[str(initial)], # Mapeia o nó inicial para o índice
+                self.node_to_idx[str(next_node)],
             ], dtype=np.float32)
 
             infos[agent] = {
-                "path": path,
-                "expected_time": self.expected_times[agent],
+                "rota_escolhida": path,
+                "expected_time": self.expected_times[agent]
             }
 
         return observations, infos
@@ -201,36 +208,43 @@ class parallel_env(ParallelEnv):
             state = self.agents_state[agent]
             route = state["route"]
             idx = state["route_idx"]
-            
-            print(f"AGENTE: {agent}, IDX: {idx}, ROTA: {route}")
+
             if idx >= len(route):
                 print(f"[ERRO] Agente {agent} excedeu a rota. IDX={idx}, TAM={len(route)}")
-                continue  # ou return terminateds, truncateds, rewards, obs, infos
+                terminations[agent] = True
+                truncations[agent] = False
+                rewards[agent] = -1.0
+                continue
 
             curr_node = route[idx]
+            self.states[agent] = curr_node  # garante sincronização
 
             action = actions[agent]
 
-            if action == 0: # WAIT
-                reward = -0.1  # penalidade leve
-                self.current_time += 1
+            if action == 0:  # WAIT
+                reward = -0.1
+                elapsed = 60.0  # assume 1 minuto de espera
+                self.current_time += elapsed
+                state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0)
+                state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0)
                 terminated = False
                 truncated = False
 
-            elif action == 1: # MOVE_TO next stop
+            elif action == 1:  # MOVE
                 if idx + 1 < len(route):
                     next_node = route[idx + 1]
-                    travel_time = self.avg_travel_time_AB.get((curr_node, next_node))
-                    if travel_time is None:
-                        # print(f"[WARN] Tempo de viagem ausente para ({curr_node}, {next_node}). Usando fallback.")
-                        travel_time = self.default_travel_time # Usa o tempo médio de viagem padrão se não houver dados
-
+                    travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
                     occupancy = self.occupancy_rate.get((curr_node, next_node), 0.0)
+
                     self.current_time += travel_time
                     self.estimated_times[agent] += travel_time
-
                     self.agents_state[agent]["route_idx"] += 1
                     self.agents_state[agent]["occupancy"] = occupancy
+
+                    # atualiza uptime e combustível
+                    state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                    state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
+
                     self.states[agent] = next_node
 
                     if next_node not in self.headways:
@@ -250,58 +264,53 @@ class parallel_env(ParallelEnv):
                         headways=self.headways[next_node]
                     )
 
-                    terminated = next_node == route[-1]  # fim da rota?
+                    terminated = next_node == route[-1]
                     truncated = self.steps[agent] >= self.max_steps
 
                 else:
-                    # Já está no último ponto da rota: penaliza se tentar mover de novo
-                    reward = -1.0
+                    reward = -1.0  # já está no final da rota, não pode mover
                     terminated = False
                     truncated = False
 
-            elif action == 2:
-                # SERVICE_CENTER
+            elif action == 2:  # SERVICE_CENTER
                 sc_node = self.get_nearest_service_center(curr_node)
-                travel_time = self.avg_travel_time_AB.get((curr_node, sc_node), self.default_travel_time) # Usa o tempo médio de viagem padrão se não houver dados
+                travel_time = self.avg_travel_time_AB.get((curr_node, sc_node), self.default_travel_time)
                 self.current_time += travel_time
                 self.estimated_times[agent] += travel_time
 
-                # Reset de manutenção, combustível, uptime
-                self.agents_state[agent]["fuel"] = 100.0
-                self.agents_state[agent]["uptime"] = 1.0
-                self.agents_state[agent]["maintenance_status"] = "ok"
+                state["fuel"] = 100.0
+                state["uptime"] = 1.0
+                state["maintenance_status"] = "ok"
                 self.states[agent] = sc_node
 
-                reward = -0.5  # pequeno custo por manutenção
+                reward = -0.5
                 terminated = False
                 truncated = self.steps[agent] >= self.max_steps
 
             else:
-                # Ação inválida
                 reward = -10.0
                 terminated = False
                 truncated = True
 
-            # Atualiza observação
-            curr_node = self.states[agent]
+            # Observação atualizada
             route_idx = self.agents_state[agent]["route_idx"]
-            next_node = route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
-
+            curr_node = self.states[agent]
+            next_node = (
+                route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
+            )
 
             travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
-            # print("print(self.current_time) ", self.current_time)
-
             observations[agent] = np.array([
-                self.current_time / (24 * 60 * 60),  # current_time_normalized (0.0 a 1.0)
+                self.current_time / (24 * 60 * 60),
                 self.occupancy_rate.get((curr_node, next_node), 0.0),
-                normalized_travel_time, # Usa o tempo médio de viagem padrão se não houver dados
+                normalized_travel_time,
                 self.future_demand_at_B.get(next_node, 0.0),
-                self.uptime_normalized.get(agent, 1.0),
-                1.0 if self.agents_state[agent]["maintenance_status"] == "ok" else 0.0,
-                self.node_to_idx[curr_node],
-                self.node_to_idx[next_node],
+                state["uptime"],
+                1.0 if state["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[str(curr_node)],
+                self.node_to_idx[str(next_node)]
             ], dtype=np.float32)
 
             rewards[agent] = reward
@@ -309,15 +318,13 @@ class parallel_env(ParallelEnv):
             truncations[agent] = truncated
             infos[agent] = {
                 "count": self.steps[agent],
-                "occupancy": self.agents_state[agent]["occupancy"],
+                "occupancy": state["occupancy"],
                 "location": curr_node,
                 "next_stop": next_node,
                 "headways": self.headways.get(curr_node, []),
             }
 
-        self.agents = [
-            agent for agent in self.agents if not (terminations[agent] or truncations[agent])
-        ]
+        self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])]
 
         if self.render_mode == "human":
             self.render()
