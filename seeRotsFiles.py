@@ -1,23 +1,23 @@
 import pickle
 
-# Caminho onde os arquivos foram salvos
+# Path where files were saved
 pkl_path = "./output_obs"
 
-# Carrega os arquivos
-with open(f"{pkl_path}/rotas_reais.pkl", "rb") as f:
-    rotas_reais = pickle.load(f)
+# Load the files
+with open(f"{pkl_path}/real_routes.pkl", "rb") as f:
+    real_routes = pickle.load(f)
 
-with open(f"{pkl_path}/rotas_metadata.pkl", "rb") as f:
-    rotas_metadata = pickle.load(f)
+with open(f"{pkl_path}/route_metadata.pkl", "rb") as f:
+    route_metadata = pickle.load(f)
 
-# Exibe algumas rotas para conferência
-print("\n📌 Amostra de rotas reais:")
-for i, (trip_id, stops) in enumerate(rotas_reais.items()):
+# Display some routes for verification
+print("\n📌 Sample of real routes:")
+for i, (trip_id, stops) in enumerate(real_routes.items()):
     print(f"\n🚌 Trip ID: {trip_id}")
     print(f"Stops: {stops}")
-    
-    meta = rotas_metadata.get(trip_id, {})
+
+    meta = route_metadata.get(trip_id, {})
     print("Metadata:", meta)
 
-    if i >= 4:  # Limita para mostrar só as 5 primeiras
+    if i >= 4:  # Limit to show only the first 5
         break

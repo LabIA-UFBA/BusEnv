@@ -1,13 +1,13 @@
 ==================================================
            AFC - Bilhetagem Automática            
 ==================================================
-Arquivo lido: SUNT/tmp/AFC/afc-2024-03-01.parquet
+File read: SUNT/tmp/AFC/afc-2024-03-01.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 1420338
-Colunas: ['cod_card', 'afc_datetime', 'integration', 'route_short_name', 'direction_id', 'value', 'vehicle']
+--- GENERAL INFORMATION ---
+Total records: 1420338
+Columns: ['cod_card', 'afc_datetime', 'integration', 'route_short_name', 'direction_id', 'value', 'vehicle']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
             cod_card        afc_datetime  integration route_short_name direction_id  value vehicle
 0  card_87788adcc649 2024-03-01 18:44:52         True             MT02          NaN    4.1   59393
 1  card_6e7fdb73af1d 2024-03-01 12:49:48         True             MT02          NaN    4.1   58447
@@ -18,13 +18,13 @@ Colunas: ['cod_card', 'afc_datetime', 'integration', 'route_short_name', 'direct
 ==================================================
      AVL - Localização Automática de Veículos     
 ==================================================
-Arquivo lido: SUNT/tmp/AVL/avl-lines-2024-03-01.parquet
+File read: SUNT/tmp/AVL/avl-lines-2024-03-01.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 203212
-Colunas: ['route_short_name', 'pt_sequence', 'direction_id', 'longitude', 'latitude', 'stop_id', 'route_long_name', 'service_code']
+--- GENERAL INFORMATION ---
+Total records: 203212
+Columns: ['route_short_name', 'pt_sequence', 'direction_id', 'longitude', 'latitude', 'stop_id', 'route_long_name', 'service_code']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
   route_short_name  pt_sequence direction_id  longitude   latitude   stop_id                                                       route_long_name  service_code
 0             0116            1            I -38.511230 -12.983389  43768720           Avenida Vale Do Tororo 327, Salvador - Bahia, 40050, Brasil         53786
 1             0116            2            I -38.511097 -12.986428  45832898           Avenida Vale do Tororó, 291 - Nazaré, Salvador - BA, Brasil         53786
@@ -35,13 +35,13 @@ Colunas: ['route_short_name', 'pt_sequence', 'direction_id', 'longitude', 'latit
 ==================================================
           LTI - Itinerário Linha-Viagem           
 ==================================================
-Arquivo lido: SUNT/tmp/LTI/lti-2024-07-12.parquet
+File read: SUNT/tmp/LTI/lti-2024-07-12.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 29038
-Colunas: ['linha', 'codAtendimento', 'nomeAtendimento', 'sentido', 'veiculo', 'motorista', 'cobrador', 'inicioProgramado', 'inicioRealizado', 'fimProgramado', 'fimRealizado', 'data', 'codPontoInicio', 'nomePontoInicio', 'codPontoFim', 'nomePontoFim', 'atividade', 'tabela', 'tipoDia', 'numeroViagem', 'toleranciaAtrasoSaida', 'toleranciaAdiantamentoSaida', 'toleranciaAtrasoChegada', 'toleranciaAdiantamentoChegada', 'toleranciaTempoViagem', 'statusSaida', 'statusChegada', 'eventos', 'kmProgramado', 'kmRealizado', 'justificativa', 'set', 'veiculoProgramado', 'veiculoRealizado', 'nomeMotorista', 'motoristaProgramado', 'fimViagemProgramadoAnterior', 'fimViagemRealizadoAnterior', 'linhaViagemAnterior', 'paradas']
+--- GENERAL INFORMATION ---
+Total records: 29038
+Columns: ['linha', 'codAtendimento', 'nomeAtendimento', 'sentido', 'veiculo', 'motorista', 'cobrador', 'inicioProgramado', 'inicioRealizado', 'fimProgramado', 'fimRealizado', 'data', 'codPontoInicio', 'nomePontoInicio', 'codPontoFim', 'nomePontoFim', 'atividade', 'tabela', 'tipoDia', 'numeroViagem', 'toleranciaAtrasoSaida', 'toleranciaAdiantamentoSaida', 'toleranciaAtrasoChegada', 'toleranciaAdiantamentoChegada', 'toleranciaTempoViagem', 'statusSaida', 'statusChegada', 'eventos', 'kmProgramado', 'kmRealizado', 'justificativa', 'set', 'veiculoProgramado', 'veiculoRealizado', 'nomeMotorista', 'motoristaProgramado', 'fimViagemProgramadoAnterior', 'fimViagemRealizadoAnterior', 'linhaViagemAnterior', 'paradas']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
   linha  codAtendimento                         nomeAtendimento sentido veiculo motorista cobrador     inicioProgramado      inicioRealizado        fimProgramado         fimRealizado        data  codPontoInicio nomePontoInicio  codPontoFim nomePontoFim         atividade tabela tipoDia  numeroViagem  toleranciaAtrasoSaida  toleranciaAdiantamentoSaida  toleranciaAtrasoChegada  toleranciaAdiantamentoChegada  toleranciaTempoViagem statusSaida statusChegada eventos  kmProgramado  kmRealizado justificativa      set veiculoProgramado veiculoRealizado nomeMotorista motoristaProgramado fimViagemProgramadoAnterior fimViagemRealizadoAnterior linhaViagemAnterior paradas
 0  0001           79355                 ROTA 01 - TROBOGY - G1.       I   20510      None     None  12/07/2024 04:50:00  12/07/2024 04:50:06  12/07/2024 04:55:00  12/07/2024 04:49:14  12/07/2024       390062220      UNIDADE G1     50194373        G1 SC           Recolhe   001N       U             0                    0.0                          0.0                      0.0                            0.0                    0.0          RG            AD    None          0.00          0.0          None  ottrans              None             None          None                None                        None                       None                None    None
 1  0001           79355                 ROTA 01 - TROBOGY - G1.       I   20510      None     None  12/07/2024 01:30:00  12/07/2024 01:49:02  12/07/2024 01:35:00  12/07/2024 01:48:04  12/07/2024        50194373           G1 SC    390062220   UNIDADE G1  Saída de Garagem   001N       U             0                    0.0                          0.0                      0.0                            0.0                    0.0          AT            AT    None          0.00          0.0          None  ottrans              None             None          None                None                        None                       None                None    None
@@ -52,13 +52,13 @@ Colunas: ['linha', 'codAtendimento', 'nomeAtendimento', 'sentido', 'veiculo', 'm
 ==================================================
           Boarding - Embarques Estimados          
 ==================================================
-Arquivo lido: SUNT/tmp/Boarding/boarding-2024-03-01.parquet
+File read: SUNT/tmp/Boarding/boarding-2024-03-01.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 1408549
-Colunas: ['tripuserid', 'type_bus', 'user_type', 'set', 'registers', 'trip_id', 'start_trip', 'end_trip', 'tolerance', 'integration', 'cod_card', 'stop_time', 'register_time', 'service_code', 'linha_afc', 'route_short_name', 'vehicle_afc', 'vehicle', 'stop_id', 'order', 'direction_id', 'trip', 'dif_boarding', 'viagem', 'classification', 'motive', 'trip_sequence', 'set_nb', 'stop_time_nb', 'hora_pe', 'route_short_name_nb', 'vehicle_nb', 'stop_id_nb', 'diff_nb', 'motive_pe', 'target_boarding']
+--- GENERAL INFORMATION ---
+Total records: 1408549
+Columns: ['tripuserid', 'type_bus', 'user_type', 'set', 'registers', 'trip_id', 'start_trip', 'end_trip', 'tolerance', 'integration', 'cod_card', 'stop_time', 'register_time', 'service_code', 'linha_afc', 'route_short_name', 'vehicle_afc', 'vehicle', 'stop_id', 'order', 'direction_id', 'trip', 'dif_boarding', 'viagem', 'classification', 'motive', 'trip_sequence', 'set_nb', 'stop_time_nb', 'hora_pe', 'route_short_name_nb', 'vehicle_nb', 'stop_id_nb', 'diff_nb', 'motive_pe', 'target_boarding']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
                       tripuserid type_bus   user_type    set  registers trip_id          start_trip            end_trip tolerance  integration           cod_card           stop_time       register_time service_code linha_afc route_short_name vehicle_afc vehicle stop_id  order direction_id  trip  dif_boarding  viagem classification       motive trip_sequence set_nb        stop_time_nb             hora_pe route_short_name_nb vehicle_nb stop_id_nb  diff_nb    motive_pe target_boarding
 0  02310030998400_20240301114921    metro  deficiente  metro          1   metro 2024-03-01 11:49:21 2024-03-01 11:49:21       NaT        False  card_e9d5dafe4b96 2024-03-01 11:49:21 2024-03-01 11:49:21          NaN      MT02             MT02       59831   59831     BTS    1.0        metro   1.0           0.0  dentro        regular  single_trip   single_trip    NaN                 NaT                 NaT                 NaN        NaN        NaN      NaN  single trip       irregular
 1  02310031021456_20240301053615    metro  deficiente  metro          2   metro 2024-03-01 05:36:15 2024-03-01 05:36:15       NaT        False  card_2c2ebacfcb43 2024-03-01 05:36:15 2024-03-01 05:36:15          NaN      MT02             MT02       59353   59353     JUA    1.0        metro   1.0           0.0  dentro        regular      regular     firt_trip  metro 2024-03-01 14:26:15 2024-03-01 14:26:15                MT02      59527        PNB      0.0      regular         regular
@@ -69,13 +69,13 @@ Colunas: ['tripuserid', 'type_bus', 'user_type', 'set', 'registers', 'trip_id', 
 ==================================================
         Alighting - Desembarques Estimados        
 ==================================================
-Arquivo lido: SUNT/tmp/Alighting/alighting-2024-03-01.parquet
+File read: SUNT/tmp/Alighting/alighting-2024-03-01.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 1224156
-Colunas: ['tripuserid', 'stop_time_ali', 'stop_id_ali', 'order_ali', 'walk_target', 'trip_ali', 'walk_dis', 'walk_time', 'walk_speed', 'diff_de_pe', 'wait_time', 'trip_dis', 'trip_time', 'vel_media', 'bridge', 'bridge_type', 'bridge_id', 'chain', 'target_ws', 'target_avs', 'target_tt', 'target_td', 'target_alighting']
+--- GENERAL INFORMATION ---
+Total records: 1224156
+Columns: ['tripuserid', 'stop_time_ali', 'stop_id_ali', 'order_ali', 'walk_target', 'trip_ali', 'walk_dis', 'walk_time', 'walk_speed', 'diff_de_pe', 'wait_time', 'trip_dis', 'trip_time', 'vel_media', 'bridge', 'bridge_type', 'bridge_id', 'chain', 'target_ws', 'target_avs', 'target_tt', 'target_td', 'target_alighting']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
                       tripuserid stop_time_ali stop_id_ali  order_ali walk_target  trip_ali  walk_dis  walk_time  walk_speed  diff_de_pe  wait_time  trip_dis  trip_time  vel_media  bridge bridge_type bridge_id        chain target_ws      target_avs  target_tt target_td         target_alighting
 0  02310031021456_20240301053615           NaT         PNB        NaN          ok       NaN       0.0   0.000000         5.0         NaN        NaN      4.12        NaN        NaN   False   sem_ponte       NaN  metro-metro        ok  fora_parametro  irregular        ok                       ok
 1  02310031021456_20240301142615           NaT         JUA        NaN          ok       NaN       0.0   0.000000         5.0         NaN        NaN      4.12        NaN        NaN   False   sem_ponte       NaN  metro-metro        ok  fora_parametro  irregular        ok                       ok
@@ -86,13 +86,13 @@ Colunas: ['tripuserid', 'stop_time_ali', 'stop_id_ali', 'order_ali', 'walk_targe
 ==================================================
            OD - Origem-Destino Estimada           
 ==================================================
-Arquivo lido: SUNT/tmp/OD/od-2024-03-01.parquet
+File read: SUNT/tmp/OD/od-2024-03-01.parquet
 
---- INFORMAÇÕES GERAIS ---
-Total de registros: 739266
-Colunas: ['route_short_name', 'register_code', 'direction_id', 'pt_sequence', 'stop_id', 'vehicle', 'trip_number', 'trip_id', 'start_trip', 'end_trip', 'stop_time', 'n-boardings', 'n-alighting', 'lag_loading', 'balance', 'loading']
+--- GENERAL INFORMATION ---
+Total records: 739266
+Columns: ['route_short_name', 'register_code', 'direction_id', 'pt_sequence', 'stop_id', 'vehicle', 'trip_number', 'trip_id', 'start_trip', 'end_trip', 'stop_time', 'n-boardings', 'n-alighting', 'lag_loading', 'balance', 'loading']
 
---- 5 PRIMEIROS REGISTROS ---
+--- 5 FIRST RECORDS ---
   route_short_name  register_code direction_id  pt_sequence   stop_id vehicle  trip_number       trip_id           start_trip             end_trip            stop_time  n-boardings  n-alighting  lag_loading    balance    loading
 0             1141          12730            I            1  44028970   21201            1  21201_1141_1  2024-03-01 06:07:50  2024-03-01 07:19:33  2024-03-01 06:07:50     8.918203          0.0     0.000000   0.000000   8.918203
 1             1141          12730            I            2  44783401   21201            1  21201_1141_1  2024-03-01 06:07:50  2024-03-01 07:19:33  2024-03-01 06:07:52     5.573877          0.0     8.918203   8.918203  14.492080

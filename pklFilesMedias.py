@@ -7,25 +7,25 @@ try:
     with open(file_path, 'rb') as f:
         data = pickle.load(f)
 
-    print(f"Conteúdo do arquivo '{file_path}':\n")
+    print(f"File content '{file_path}':\n")
 
     if isinstance(data, dict):
         values = list(data.values())
-        print(f"Número de pares: {len(values)}")
-        print(f"Tempo médio de viagem: {np.mean(values):.2f}")
-        print(f"Tempo mínimo: {np.min(values):.2f}")
-        print(f"Tempo máximo: {np.max(values):.2f}")
-        print(f"Desvio padrão: {np.std(values):.2f}")
+        print(f"Number of pairs: {len(values)}")
+        print(f"Average travel time: {np.mean(values):.2f}")
+        print(f"Minimum time: {np.min(values):.2f}")
+        print(f"Maximum time: {np.max(values):.2f}")
+        print(f"Standard deviation: {np.std(values):.2f}")
 
-        # Se quiser ver os pares com maiores tempos
-        print("\nTop 5 maiores tempos:")
+        # If you want to see the pairs with the highest times
+        print("\nTop 5 highest times:")
         for k, v in sorted(data.items(), key=lambda item: item[1], reverse=True)[:5]:
             print(f"  {k}: {v:.2f}")
 
     else:
-        print(f"Tipo de dado não esperado: {type(data)}")
+        print(f"Unexpected data type: {type(data)}")
 
 except FileNotFoundError:
-    print(f"Erro: O arquivo '{file_path}' não foi encontrado.")
+    print(f"Error: File '{file_path}' not found.")
 except Exception as e:
-    print(f"Ocorreu um erro ao carregar o arquivo pickle: {e}")
+    print(f"An error occurred while loading the pickle file: {e}")
