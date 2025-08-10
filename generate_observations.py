@@ -73,7 +73,7 @@ for i, date_str in enumerate(dates): # Loop through each date
     except Exception as e:
         print(f"⚠️ Erro OD {date_str}: {e}")
 
-    # --- Boarding: future_demand_at_B ---
+    # --- Boarding: future_demand_at_B --- 
     try:
         df_board = pd.read_parquet(os.path.join(BASE_PATH, "Boarding", f"boarding-{date_str}.parquet")) # Read the boarding data
         if df_board is not None and "stop_id" in df_board.columns: # Check if the DataFrame is not empty and contains 'stop_id'
@@ -93,7 +93,7 @@ for i, date_str in enumerate(dates): # Loop through each date
         df_avl = pd.read_parquet(os.path.join(BASE_PATH, "AVL", f"avl-lines-{date_str}.parquet")) # Read the AVL data
         if 'stop_id' in df_avl.columns: # Check if 'stop_id' column exists
             for stop_id, group in df_avl.groupby('stop_id'): # Group by stop_id
-                count = len(group)
+                count = len(group) # Count total records for this stop
                 if count > 0: # Check if there are any records for this stop
                     # Simulated occupancy, as real column is missing
                     occ_value = 0.5  # Dummy value, as AVL does not have real occupancy_rate
@@ -110,8 +110,8 @@ for i, date_str in enumerate(dates): # Loop through each date
 
         # Check which time columns are available
         if 'start_trip' in df_lti.columns and 'end_trip' in df_lti.columns: # Prefer 'start_trip' and 'end_trip' if available
-            df_lti['start_trip'] = pd.to_datetime(df_lti['start_trip'], errors='coerce', dayfirst=True)
-            df_lti['end_trip'] = pd.to_datetime(df_lti['end_trip'], errors='coerce', dayfirst=True)
+            df_lti['start_trip'] = pd.to_datetime(df_lti['start_trip'], errors='coerce', dayfirst=True) # Convert to datetime
+            df_lti['end_trip'] = pd.to_datetime(df_lti['end_trip'], errors='coerce', dayfirst=True) # Convert to datetime
         elif 'inicioProgramado' in df_lti.columns and 'fimProgramado' in df_lti.columns: # Fallback to 'inicioProgramado' and 'fimProgramado'
             df_lti['start_trip'] = pd.to_datetime(df_lti['inicioProgramado'], errors='coerce', dayfirst=True)
             df_lti['end_trip'] = pd.to_datetime(df_lti['fimProgramado'], errors='coerce', dayfirst=True)
@@ -132,19 +132,19 @@ for i, date_str in enumerate(dates): # Loop through each date
 
 
 # === Finalization ===
-def finalize_avg_dict(d):
-    return {k: v[0]/v[1] for k, v in d.items() if v[1] > 0}
+def finalize_avg_dict(d): 
+    return {k: v[0]/v[1] for k, v in d.items() if v[1] > 0} # Calculate average
 
 with open(os.path.join(OUTPUT_PATH, "avg_travel_time_AB.pkl"), "wb") as f:
-    pickle.dump(finalize_avg_dict(avg_travel_times), f)
+    pickle.dump(finalize_avg_dict(avg_travel_times), f) # Save average travel times
 
 with open(os.path.join(OUTPUT_PATH, "future_demand_at_B.pkl"), "wb") as f:
-    pickle.dump(finalize_avg_dict(future_demand), f)
+    pickle.dump(finalize_avg_dict(future_demand), f) # Save average future demand
 
 with open(os.path.join(OUTPUT_PATH, "occupancy_rate.pkl"), "wb") as f:
-    pickle.dump(finalize_avg_dict(occupancy), f)
+    pickle.dump(finalize_avg_dict(occupancy), f) # Save average occupancy rate
 
 with open(os.path.join(OUTPUT_PATH, "uptime_normalized.pkl"), "wb") as f:
-    pickle.dump(finalize_avg_dict(uptime), f)
+    pickle.dump(finalize_avg_dict(uptime), f) # Save average uptime normalized
 
 print("\n✅ Todos os dados foram processados e salvos.")

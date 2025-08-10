@@ -85,8 +85,6 @@ class parallel_env(ParallelEnv):
                 "needs_service": False          # Flag for maintenance
             }
 
-            # self.action_space = Discrete(3)  # Discrete action space (3 possible actions: 0, 1, 2)
-
         # Reward parameters
         self.reward_weights = {
             "occ_penalty": 1.0,
@@ -304,6 +302,8 @@ class parallel_env(ParallelEnv):
             travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
+            print(f"[DEBUG] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
+
             observations[agent] = np.array([
                 self.current_time / (24 * 60 * 60), # Normalized time of day (0.0 to 1.0)
                 self.occupancy_rate.get((curr_node, next_node), 0.0), # Occupancy rate between current node and next node
@@ -459,7 +459,7 @@ class DefaultReward(RewardBaseClass):
         sync_score = 0.0
         if headways and len(headways) > 1:
             intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)] # Calculates intervals between arrivals
-            if intervals:
+            if intervals: # Check if intervals list is not empty
                 avg_interval = sum(intervals) / len(intervals) # Average interval
                 std = (sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)) ** 0.5 # Standard deviation of intervals
                 sync_score = -std  # Penalizes irregularity
