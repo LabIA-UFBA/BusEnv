@@ -49,7 +49,7 @@ def env_creator(config):
         network=G,
         actions_amount=3,
         max_steps=100,
-        num_agents=5,
+        num_agents=1,
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
         occupancy_rate=occupancy_rate,

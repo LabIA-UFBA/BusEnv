@@ -44,8 +44,6 @@ These outputs provide the agent with essential feedback on system state,
 enabling better decision-making and facilitating the design of reward functions that align with real-world service goals.
 
 ---
-
----
 ## 🎮 Actions
 
 At the beginning of each training episode (`reset`), the agent is assigned one of the valid routes registered in the `real_routes` file.  
@@ -66,8 +64,6 @@ The action space available to the agent at each training step has been expanded 
 
 **Purpose:**  
 These actions allow agents to balance service efficiency, passenger satisfaction, and operational constraints, while simulating realistic decision-making in a multi-bus network.
-
----
 
 ---
 ## 🎯 Reward Function
@@ -95,9 +91,6 @@ The main components of the reward are:
 
 **Goal:**  
 By combining these factors, the reward function teaches agents to **balance passenger satisfaction, fleet efficiency, and operational sustainability** in a real-world inspired transit network.
-
-
----
 
 ---
 ## 🛠 Training Setup

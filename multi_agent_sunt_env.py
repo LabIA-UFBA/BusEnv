@@ -36,7 +36,7 @@ class parallel_env(ParallelEnv):
         self.stop = DefaultStopClass() if stopClass is None else stopClass 
         self.reward = DefaultReward() if rewardClass is None else rewardClass 
 
-        self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)}
+        self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)} # Map nodes to indices
 
         # self.node_to_idx = {node: idx for idx, node in enumerate(sorted(self.network.nodes()))}  # Map nodes to indices
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}  # Map indices to nodes
@@ -220,6 +220,7 @@ class parallel_env(ParallelEnv):
             self.states[agent] = curr_node  # Ensures synchronization
 
             action = actions[agent] # Action chosen by the agent
+            print(f"[DEBUG] action: {action}")
 
             if action == 0:  # WAIT
                 reward = -0.1  # Penalty for waiting
@@ -250,6 +251,14 @@ class parallel_env(ParallelEnv):
                     if next_node not in self.headways: # If the next node does not have a arrival history
                         self.headways[next_node] = []
                     self.headways[next_node].append(self.current_time) # Adds the current time to the arrival history of the next node
+
+                    print(f"[STEP Action MOVE] self.estimated_times[agent]: {self.estimated_times[agent]}")
+                    print(f"[STEP Action MOVE] self.expected_times[agent]: {self.expected_times[agent]}")
+                    print(f"[STEP Action MOVE] self.headways[next_node]: {self.headways[next_node]}")
+                    print(f"[STEP Action MOVE] travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time): {travel_time}")
+                    print(f"[STEP]  self.current_time: {self.current_time}")
+                    print(f"[STEP]  self.occupancy_rate.get((curr_node, next_node), 0.0): {self.occupancy_rate.get((curr_node, next_node), 0.0)}")
+                    print(f"[STEP]  state['uptime']: {state['uptime']}")
 
                     reward = self.reward.getReward( # Calculates the reward based on the current state
                         new_state=next_node, # New state of the agent
@@ -302,7 +311,17 @@ class parallel_env(ParallelEnv):
             travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
-            print(f"[DEBUG] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
+            print(f"[STEP] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
+            print(f"[STEP]  self.current_time / (24 * 60 * 60): {self.current_time / (24 * 60 * 60)}")
+            print(f"[STEP]  normalized_travel_time: {normalized_travel_time}")
+            print(f"[STEP]  self.occupancy_rate.get((curr_node, next_node), 0.0): {self.occupancy_rate.get((curr_node, next_node), 0.0)}")
+            print(f"[STEP]  state['uptime']: {state['uptime']}")
+            print(f"[STEP]  curr_node: {curr_node}")
+            print(f"[STEP]  next_node: {next_node}")
+            print(f"[STEP]  travel_time: {travel_time}")
+            print(f"[STEP]  self.node_to_idx[str(curr_node)]: {self.node_to_idx[str(curr_node)]}")
+            print(f"[STEP]  self.node_to_idx[str(next_node)]: {self.node_to_idx[str(next_node)]}")
+
 
             observations[agent] = np.array([
                 self.current_time / (24 * 60 * 60), # Normalized time of day (0.0 to 1.0)
