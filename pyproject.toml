@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graph-exploration"
+version = "0.1.0"
+description = "Refatoração modular do projeto graph-exploration"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "Seu Nome"}]
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+rllib = ["ray[rllib]>=2.9.0", "pettingzoo>=1.24.3"]
+data = ["pandas>=2.0", "numpy>=1.24"]
+viz = ["matplotlib>=3.7", "networkx>=3.1"]
+
+[project.scripts]
+graphx = "graph_exploration.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
