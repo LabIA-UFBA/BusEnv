@@ -1,177 +1,165 @@
 # 🚍 Graph Exploration – Multi-Agent Urban Bus Simulation (Modular)
 
-This project provides a **multi-agent reinforcement learning environment** for urban bus operations, based on real-world data from the **Salvador Urban Network Transportation (SUNT)** system.  
-It has been refactored into a **modular package** with a clean structure, clear separation of concerns, and a unified CLI.
+Este projeto fornece um **ambiente de aprendizado por reforço multiagente** para operações de ônibus urbanos, baseado em dados reais do sistema **Salvador Urban Network Transportation (SUNT)**.  
+Ele foi refatorado em um **pacote modular**, com estrutura limpa, separação clara de responsabilidades e uma CLI unificada.
 
 ---
 
-## 🚌 Overview
+## 🚌 Visão Geral
 
-The **Multi-Agent Urban Bus Simulation Environment** is built on top of real public transportation data from Salvador (Brazil).  
-It simulates the operation of multiple buses as independent agents navigating a real city transit network, enabling the development and testing of intelligent control strategies for public transport.
+O **Ambiente de Simulação Multiagente de Ônibus Urbanos** é construído sobre dados reais de transporte público de Salvador (Brasil).  
+Simula a operação de múltiplos ônibus como agentes independentes navegando em uma rede real, permitindo desenvolver e testar estratégias inteligentes de controle para transporte coletivo.
 
-Key aspects:
-- Realistic, **data-driven** training scenarios.
-- Focus on **optimizing service efficiency** and **passenger experience**.
-- Uses **boarding, alighting, and travel time data** from actual operations.
-
----
-
-## 🎯 Objectives
-
-Agents (buses) are trained to:
-- Reduce passenger waiting time at stops.
-- Maintain regular headways (time between buses).
-- Balance occupancy (avoid overcrowding or emptiness).
-- Operate efficiently regarding energy and maintenance.
-
-The system applies **Multi-Agent Reinforcement Learning (MARL)**, where each bus acts autonomously but cooperates implicitly through a **shared reward function**.
+Aspectos principais:
+- Cenários realistas e **baseados em dados**.
+- Foco em **otimizar eficiência do serviço** e **experiência do passageiro**.
+- Uso de **dados de embarque, desembarque e tempos de viagem** reais.
 
 ---
 
-## 📊 Observation Outputs
+## 🎯 Objetivos
 
-During training, the environment generates key metrics such as:
+Os agentes (ônibus) são treinados para:
+- Reduzir o tempo de espera dos passageiros nos pontos.  
+- Manter regularidade nos intervalos entre veículos (headways).  
+- Balancear ocupação (evitar lotação ou vazio).  
+- Operar de forma eficiente em energia e manutenção.  
 
-- **avg_travel_time_AB** → Average travel time between reference stops.  
-- **future_demand_at_B** → Predicted passenger demand at stop B.  
-- **occupancy_rate** → Proportion of current bus capacity in use.  
-- **uptime_normalized** → Normalized availability of a bus in operation.  
-
-These signals provide feedback to agents and can be used for both monitoring and reward shaping.
-
----
-
-## 🎮 Actions
-
-Each bus (agent) can choose among three actions:
-
-- **WAIT** → Delay before continuing, to avoid clustering and improve headway.  
-- **MOVE** → Proceed to the next stop.  
-- **SERVICE_CENTER** → Divert to maintenance when required (low fuel or maintenance issues).  
+O sistema aplica **Aprendizado por Reforço Multiagente (MARL)**, onde cada ônibus age de forma autônoma, mas coopera implicitamente através de uma **função de recompensa compartilhada**.
 
 ---
 
-## 🎯 Reward Function
+## 📊 Sinais de Observação
 
-The reward combines:
-- Passenger service quality (shorter waits, demand satisfaction).  
-- Operational efficiency (balanced occupancy, timely trips).  
-- Maintenance/fuel management (penalties for ignoring issues).  
-- Traffic flow & coordination (avoid idling or bus bunching).  
+Durante o treinamento, o ambiente gera métricas como:
 
-This ensures agents balance **service quality, fleet efficiency, and sustainability**.
+- **avg_travel_time_AB** → Tempo médio de viagem entre pontos de referência.  
+- **future_demand_at_B** → Demanda prevista de passageiros em um ponto.  
+- **occupancy_rate** → Taxa de ocupação do ônibus.  
+- **uptime_normalized** → Disponibilidade normalizada do veículo em operação.  
 
----
-
-## 🛠 Training Setup
-
-The environment integrates:
-
-- **Ray RLlib** → Distributed reinforcement learning.  
-- **PettingZoo** → Multi-agent environment API.  
-- **SuperSuit** → Wrappers for preprocessing.  
-- **Gymnasium** → Standard action/observation API.  
-
-**Configuration:**
-- Each bus is an agent.
-- Scenario based on real SUNT data (routes, stops, demand).  
-- Each episode ≈ one simulated operational day.  
-- PPO (Proximal Policy Optimization) with shared policy.  
-
-**Scaling:**  
-Supports **hundreds of agents in parallel**, leveraging Ray’s distributed training.
+Esses sinais alimentam a função de recompensa e podem ser usados para monitoramento.
 
 ---
 
-## 📂 Project Structure
+## 🎮 Ações
+
+Cada ônibus (agente) pode escolher entre:
+
+- **WAIT** → Aguardar antes de seguir, para evitar agrupamento.  
+- **MOVE** → Ir ao próximo ponto.  
+- **SERVICE_CENTER** → Desviar para manutenção quando necessário.  
+
+---
+
+## 🎯 Função de Recompensa
+
+A recompensa combina:
+- Qualidade do serviço ao passageiro (espera menor, demanda atendida).  
+- Eficiência operacional (ocupação equilibrada, viagens regulares).  
+- Manutenção/combustível (penalidade por ignorar problemas).  
+- Fluxo e coordenação (evitar ônibus emparelhados).  
+
+---
+
+## 🛠 Setup de Treinamento
+
+Integra com:
+
+- **Ray RLlib** → Treinamento distribuído.  
+- **PettingZoo** → API multiagente.  
+- **SuperSuit** → Wrappers de pré-processamento.  
+- **Gymnasium** → API padrão.  
+
+**Configuração:**
+- Cada ônibus é um agente.  
+- Cenário baseado em dados reais (rotas, pontos, demanda).  
+- Cada episódio ≈ um dia simulado de operação.  
+- PPO (Proximal Policy Optimization) com política compartilhada.  
+
+**Escalabilidade:**  
+Suporta **centenas de agentes em paralelo** com Ray distribuído.
+
+---
+
+## 📂 Estrutura do Projeto
 
 ```
 src/
-├─ __init__.py
-├─ __main__.py
-├─ cli.py                  # Unified CLI
-├─ envs/
-│  └─ sunt_env.py          # PettingZoo environment
-├─ pipelines/
-│  ├─ observations.py      # Observation generation
-│  ├─ real_routes.py       # Real route generation
-│  ├─ stats.py             # Metrics/statistics
-│  └─ train_rllib.py       # RLlib training
-├─ tools/
-│  ├─ look_amount.py
-│  ├─ pkl_medias.py
-│  ├─ see_routes.py
-│  └─ view_pkl.py
-└─ viz/
-   └─ view_graph.py
+├─ envs/                        # ambientes PettingZoo
+├─ pipelines/                   # observações, rotas, métricas, treino RLlib
+├─ tools/                       # utilitários de análise e manipulação de dados
+├─ viz/                         # visualização de grafos
+├─ tests/                       # testes automatizados
+├─ training_observation/        # observações de treino
+├─ output_observation_travel_time_sum_amout/  # outputs experimentais
+└─ __pycache__/                 # cache python
 ```
 
-- **`legacy/`** → original scripts kept unchanged, for reference.  
-- **CLI** exposes subcommands mapping to these modules.  
-- Hardcoded paths from original scripts remain; consider replacing with `.env` or config files.  
+- **CLI** expõe subcomandos que mapeiam para esses módulos.  
+- Alguns scripts ainda usam **caminhos hardcoded** → recomendável migrar para configs ou `.env`.  
 
 ---
 
-## ⚡ Installation & Usage
+## ⚡ Instalação & Uso
 
 ```bash
-# 1. Create a virtual environment
+# 1. Criar ambiente virtual
 python -m venv .venv
-source .venv/bin/activate     # Windows (PowerShell): .venv\Scripts\Activate.ps1
+# Linux / macOS
+source .venv/bin/activate
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
 
-# 2. Upgrade setuptools and pip
+# 2. Atualizar ferramentas básicas
 pip install --upgrade pip setuptools
 
-# 3. Install dependencies in editable mode
+# 3. Instalar dependências em modo editável
 pip install -e ".[rllib,data,viz,test]"
 
-# 4. (Linux / macOS) Export PYTHONPATH so Python finds 'src'
+# 4. (Linux / macOS) Exportar PYTHONPATH
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
 #    (Windows PowerShell)
 $env:PYTHONPATH = (Get-Location).Path + ";" + $env:PYTHONPATH
 
-# 5. Run tests
+# 5. Rodar testes
 pytest -q
 ```
 
-### CLI usage
-All commands are unified under `graphx`:
+### CLI (`graphx`)
 
 ```bash
-# Training with RLlib (reinforcement learning experiments)
+# Treinamento com RLlib
 graphx train -- --help
 
-# Show dataset statistics (mean, std, etc.)
+# Estatísticas do dataset
 graphx stats -- --help
 
-# Inspect dataset size and item counts
+# Tamanho do dataset e contagem de itens
 graphx look-amount -- --help
 
-# Compute averages across PKL files
+# Médias em arquivos PKL
 graphx pkl-medias -- --help
 
-# Explore and analyze route files
+# Explorar arquivos de rotas
 graphx see-routes -- --help
 
-# View the content of PKL files interactively
+# Ver conteúdo de PKL
 graphx view-pkl -- --help
 
-# Visualize graphs
+# Visualizar grafos
 graphx view-graph -- --help
 
-# Run the SUNT environment entrypoint (if available)
+# Executar ambiente SUNT
 graphx env-sunt --
 ```
 
-Arguments after `--` are passed directly to the original scripts.
-
 ---
 
-## ✅ Next Steps
+## ✅ Próximos Passos
 
-- Replace **hardcoded paths** with configuration files or environment variables.  
-- Extend **tests** to cover pipelines, tools, and environment logic.  
-- Add support for **experiment tracking** (e.g., MLflow, Weights & Biases).  
-- Modularize reward and observation design for more flexible experimentation.  
+- Substituir **caminhos hardcoded** por configs/env.  
+- Aumentar cobertura de **testes**.  
+- Adicionar suporte a **experiment tracking** (MLflow, W&B).  
+- Modularizar recompensas e observações para experimentos mais flexíveis.  
