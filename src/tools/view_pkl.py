@@ -2,7 +2,7 @@ import pickle
 import pandas as pd # Importe pandas se você espera que o conteúdo seja um DataFrame
 
 # 'output/combined_sum_amount.pkl' ou 'output/combined_averages.pkl'
-file_path = 'output_obs2/avg_travel_time_AB.pkl' 
+file_path = '../training_observation/avg_travel_time_AB.pkl' 
 
 try:
     with open(file_path, 'rb') as f:

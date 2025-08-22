@@ -27,7 +27,7 @@ def env_creator(config):
         G = pickle.load(f)
 
     # === Load the observation files ===
-    obs_dir = os.path.join(BASE_DIR, "output_obs")
+    obs_dir = os.path.join(BASE_DIR, "training_observation")
 
     with open(os.path.join(obs_dir, "avg_travel_time_AB.pkl"), "rb") as f:
         avg_travel_time_AB = pickle.load(f)

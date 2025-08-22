@@ -14,7 +14,7 @@ from collections import defaultdict
 
 # Path to the base directory and output directory
 BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp"
-OUTPUT_PATH = "./src/output_obs"
+OUTPUT_PATH = "../training_observation"
 GRAPH_PATH = "./src/viz/graph_gtfs_fev_2024.gpickle"
 
 # Create output directory if it doesn't exist

@@ -11,8 +11,8 @@ from collections import defaultdict
 
 # === Main Paths ===
 BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp"
-OUTPUT_PATH = "./sunt_training/output_obs"
-GRAPH_PATH = "./sunt_training/viz/graph_gtfs_fev_2024.gpickle" # Path to the GTFS graph
+OUTPUT_PATH = "../training_observation"
+GRAPH_PATH = "../viz/graph_gtfs_fev_2024.gpickle" # Path to the GTFS graph
 
 # Create output directory if necessary
 os.makedirs(OUTPUT_PATH, exist_ok=True)

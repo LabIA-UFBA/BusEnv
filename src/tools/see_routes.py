@@ -1,7 +1,7 @@
 import pickle
 
 # Path where files were saved
-pkl_path = "./output_obs"
+pkl_path = "../training_observation"
 
 # Load the files
 with open(f"{pkl_path}/rotas_reais.pkl", "rb") as f:
