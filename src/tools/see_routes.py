@@ -4,10 +4,10 @@ import pickle
 pkl_path = "src/training_observation"
 
 # Load the files
-with open(f"{pkl_path}/rotas_reais.pkl", "rb") as f:
+with open(f"{pkl_path}/real_routes.pkl", "rb") as f:
     real_routes = pickle.load(f)
 
-with open(f"{pkl_path}/rotas_metadata.pkl", "rb") as f:
+with open(f"{pkl_path}/route_metadata.pkl", "rb") as f:
     route_metadata = pickle.load(f)
 
 # Display some routes for verification
