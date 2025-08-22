@@ -140,9 +140,28 @@ pytest -q
 All commands are unified under `graphx`:
 
 ```bash
+# Training with RLlib (reinforcement learning experiments)
 graphx train -- --help
-graphx obs -- --help
-graphx routes -- --help
+
+# Show dataset statistics (mean, std, etc.)
+graphx stats -- --help
+
+# Inspect dataset size and item counts
+graphx look-amount -- --help
+
+# Compute averages across PKL files
+graphx pkl-medias -- --help
+
+# Explore and analyze route files
+graphx see-routes -- --help
+
+# View the content of PKL files interactively
+graphx view-pkl -- --help
+
+# Visualize graphs
+graphx view-graph -- --help
+
+# Run the SUNT environment entrypoint (if available)
 graphx env-sunt --
 ```
 

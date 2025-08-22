@@ -1,7 +1,7 @@
 import pickle
 import numpy as np
 
-file_path = '../training_observation/avg_travel_time_AB.pkl'
+file_path = 'src/training_observation/avg_travel_time_AB.pkl'
 
 try:
     with open(file_path, 'rb') as f:
