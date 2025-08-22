@@ -87,7 +87,7 @@ Supports **hundreds of agents in parallel**, leveraging Ray’s distributed trai
 ## 📂 Project Structure
 
 ```
-src/sunt_training/
+src/
 ├─ __init__.py
 ├─ __main__.py
 ├─ cli.py                  # Unified CLI
@@ -120,7 +120,10 @@ src/sunt_training/
 python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 
-# 2. Install dependencies in editable mode
+# 2. upgrade setuptools
+pip install --upgrade pip setuptools
+
+# 3. Install dependencies in editable mode
 pip install -e ".[rllib,data,viz]"
 
 # 3. Run tests

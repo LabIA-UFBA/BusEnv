@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "graph-exploration"
 version = "0.1.0"
-description = "Refatoração modular do projeto graph-exploration"
+description = "SUNT - MARL for urban mobility"
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{name = "Seu Nome"}]
+authors = [{name = "Wesley Silva"},{name = "Rafael Costa"}]
 license = {text = "MIT"}
 dependencies = []
 
@@ -16,9 +16,11 @@ dependencies = []
 rllib = ["ray[rllib]>=2.9.0", "pettingzoo>=1.24.3"]
 data = ["pandas>=2.0", "numpy>=1.24"]
 viz = ["matplotlib>=3.7", "networkx>=3.1"]
+test = ["pytest>=7.4"]
+
 
 [project.scripts]
-graphx = "graph_exploration.cli:app"
+graphx = "src.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

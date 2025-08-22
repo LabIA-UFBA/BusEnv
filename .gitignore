@@ -18,3 +18,4 @@ output_obs/rotas_reais.pkl
 .coverage
 .pytest_cache/
 .ipynb_checkpoints/
+log.txt
