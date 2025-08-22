@@ -8,16 +8,18 @@ version = "0.1.0"
 description = "SUNT - MARL for urban mobility"
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{name = "Wesley Silva"},{name = "Rafael Costa"}]
+authors = [
+    {name = "Wesley Silva"},
+    {name = "Rafael Costa"}
+]
 license = {text = "MIT"}
 dependencies = []
 
 [project.optional-dependencies]
-rllib = ["ray[rllib]>=2.9.0", "pettingzoo>=1.24.3"]
+rllib = ["ray[rllib]>=2.9.0", "pettingzoo>=1.24.3", "supersuit>=3.9.3"]
 data = ["pandas>=2.0", "numpy>=1.24"]
 viz = ["matplotlib>=3.7", "networkx>=3.1"]
 test = ["pytest>=7.4"]
-
 
 [project.scripts]
 graphx = "src.cli:app"

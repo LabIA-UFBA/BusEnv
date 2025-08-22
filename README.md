@@ -118,15 +118,21 @@ src/
 ```bash
 # 1. Create a virtual environment
 python -m venv .venv
-source .venv/bin/activate     # Windows: .venv\Scripts\activate
+source .venv/bin/activate     # Windows (PowerShell): .venv\Scripts\Activate.ps1
 
-# 2. upgrade setuptools
+# 2. Upgrade setuptools and pip
 pip install --upgrade pip setuptools
 
 # 3. Install dependencies in editable mode
-pip install -e ".[rllib,data,viz]"
+pip install -e ".[rllib,data,viz,test]"
 
-# 3. Run tests
+# 4. (Linux / macOS) Export PYTHONPATH so Python finds 'src'
+export PYTHONPATH=$(pwd):$PYTHONPATH
+
+#    (Windows PowerShell)
+$env:PYTHONPATH = (Get-Location).Path + ";" + $env:PYTHONPATH
+
+# 5. Run tests
 pytest -q
 ```
 

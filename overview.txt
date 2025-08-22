@@ -1,0 +1,30 @@
+==================================================
+           AFC - Bilhetagem Automática            
+==================================================
+ERROR: File not found at 'SUNT/tmp/AFC/afc-2024-03-01.parquet'. Check the path.
+
+==================================================
+     AVL - Localização Automática de Veículos     
+==================================================
+ERROR: File not found at 'SUNT/tmp/AVL/avl-lines-2024-03-01.parquet'. Check the path.
+
+==================================================
+          LTI - Itinerário Linha-Viagem           
+==================================================
+ERROR: File not found at 'SUNT/tmp/LTI/lti-2024-07-12.parquet'. Check the path.
+
+==================================================
+          Boarding - Embarques Estimados          
+==================================================
+ERROR: File not found at 'SUNT/tmp/Boarding/boarding-2024-03-01.parquet'. Check the path.
+
+==================================================
+        Alighting - Desembarques Estimados        
+==================================================
+ERROR: File not found at 'SUNT/tmp/Alighting/alighting-2024-03-01.parquet'. Check the path.
+
+==================================================
+           OD - Origem-Destino Estimada           
+==================================================
+ERROR: File not found at 'SUNT/tmp/OD/od-2024-03-01.parquet'. Check the path.
+
