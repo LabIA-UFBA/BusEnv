@@ -125,8 +125,8 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #    (Windows PowerShell)
 $env:PYTHONPATH = (Get-Location).Path + ";" + $env:PYTHONPATH
 
-# 5. Unzip the real route data (required for training)
-unzip training_observation/real_routes.zip -d training_observation/
+# 5. Unzip the real route data (required for training) - Too big to upload on git without zip
+unzip src/training_observation/real_routes.zip -d src/training_observation/
 
 # 6. Run tests
 pytest -q
