@@ -9,7 +9,7 @@ from ray.tune.tuner import Tuner # Ray Tune API
 from pettingzoo.utils import parallel_to_aec # Importing PettingZoo for Ray RLlib compatibility
 from supersuit import pad_observations_v0, pad_action_space_v0 # Importing Supersuit for Ray RLlib compatibility
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
-from ray.rllib.utils.pre_checks.env  import check_env
+from ray.rllib.utils.check_env import check_env
 from ray.tune.logger import TBXLoggerCallback
 
 
@@ -72,7 +72,16 @@ def env_creator(config):
     return env
 
 
-register_env("sunt_env", lambda config: env_creator(config)) # Registering the custom environment in Ray RLlib
+register_env("sunt_env", lambda config: env_creator(config))  # Register the custom environment in Ray RLlib
+
+# --- Try GPU first, fall back to CPU if it fails ---
+try:
+    ray.init(ignore_reinit_error=True)  # Let Ray auto-detect GPUs
+    print("✅ Ray initialized with GPU (if available).")
+except Exception as e:
+    print(f"⚠️ Ray GPU init failed ({e}). Falling back to CPU.")
+    ray.init(ignore_reinit_error=True, num_gpus=0)
+    print("✅ Ray initialized in CPU-only mode.")
 
 ray.init(ignore_reinit_error=True) # Initializing Ray
 
