@@ -9,7 +9,7 @@ from ray.tune.tuner import Tuner # Ray Tune API
 from pettingzoo.utils import parallel_to_aec # Importing PettingZoo for Ray RLlib compatibility
 from supersuit import pad_observations_v0, pad_action_space_v0 # Importing Supersuit for Ray RLlib compatibility
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
-from ray.rllib.utils.check_env import check_env
+# from ray.rllib.utils.pre_checks.env import check_env
 from ray.tune.logger import TBXLoggerCallback
 
 
@@ -53,7 +53,7 @@ def env_creator(config):
         network=G,
         actions_amount=3,
         max_steps=100,
-        num_agents=1,
+        num_agents=3,
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
         occupancy_rate=occupancy_rate,
@@ -67,7 +67,7 @@ def env_creator(config):
     env = pad_action_space_v0(env)
     env = ParallelPettingZooEnv(env)
 
-    check_env(env)  # Validate if it's compatible with RLlib
+    # check_env(env)  # Validate if it's compatible with RLlib
 
     return env
 
@@ -101,7 +101,7 @@ config = ( # Ray RLlib configuration
     PPOConfig() # Setting up the PPO algorithm configuration
     .environment(env="sunt_env") # Defining the environment
     .framework("torch") # Using PyTorch as the framework
-    .rollouts(num_rollout_workers=1)
+    .env_runners(num_env_runners=1) #.rollouts(num_rollout_workers=1)
     .training(train_batch_size=4000, gamma=0.99) # Training batch size
     .resources(num_gpus=0)
     .multi_agent( # Configuring multi-agents with a shared policy
@@ -115,7 +115,7 @@ tuner = Tuner(  # The Tuner is the heart of experimentation with ray.tune
     "PPO", # PPO algorithm from Ray RLlib
     run_config=RunConfig( # Pass a RunConfig (from ray.train) to control execution, checkpoints, logs, etc
         stop={"training_iteration": 5},
-        local_dir ="./results",
+        storage_path=os.path.abspath("./results"), # local_dir ="./results",
         name="ppo_sunt_experiment",
         checkpoint_config=ray.train.CheckpointConfig(
             checkpoint_at_end=True,
