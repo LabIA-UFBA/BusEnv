@@ -3,24 +3,21 @@ import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.train import RunConfig  
+from ray.tune.logger import TBXLoggerCallback
+from ray.train import RunConfig
 from ray.tune import TuneConfig
 from ray.tune.tuner import Tuner # Ray Tune API
-from pettingzoo.utils import parallel_to_aec # Importing PettingZoo for Ray RLlib compatibility
-from supersuit import pad_observations_v0, pad_action_space_v0 # Importing Supersuit for Ray RLlib compatibility
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
-# from ray.rllib.utils.pre_checks.env import check_env
-from ray.tune.logger import TBXLoggerCallback
+from pettingzoo.utils import parallel_to_aec
+from supersuit import pad_observations_v0, pad_action_space_v0
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+import pickle
 
 
-
-
-# Creating and registering a multi-agent environment compatible with RLlib
+# --- Environment creator ---
 def env_creator(config):
-    import pickle
-    from src.envs.sunt_env import parallel_env # Import the custom environment
+    from src.envs.sunt_env import parallel_env
 
-    BASE_DIR = os.path.dirname(os.path.dirname(__file__)) # Get the base directory
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
     # === Load the graph ===
     with open(os.path.join(BASE_DIR, "viz", "graph_gtfs_fev_2024.gpickle"), "rb") as f:
@@ -41,7 +38,6 @@ def env_creator(config):
     with open(os.path.join(obs_dir, "uptime_normalized.pkl"), "rb") as f:
         uptime_normalized = pickle.load(f)
 
-    # === Load the real routes and their metadata ===
     with open(os.path.join(obs_dir, "real_routes.pkl"), "rb") as f:
         real_routes = pickle.load(f)
 
@@ -59,7 +55,7 @@ def env_creator(config):
         occupancy_rate=occupancy_rate,
         uptime_normalized=uptime_normalized,
         real_routes=real_routes,
-        route_metadata=route_metadata  # <-- Pass the real routes and metadata
+        route_metadata=route_metadata
     )
 
     # === Wrappers ===
@@ -67,29 +63,26 @@ def env_creator(config):
     env = pad_action_space_v0(env)
     env = ParallelPettingZooEnv(env)
 
-    # check_env(env)  # Validate if it's compatible with RLlib
-
     return env
 
 
-register_env("sunt_env", lambda config: env_creator(config))  # Register the custom environment in Ray RLlib
+# Register the custom environment
+register_env("sunt_env", lambda config: env_creator(config))
 
-# --- Try GPU first, fall back to CPU if it fails ---
+# --- Ray init ---
 try:
-    ray.init(ignore_reinit_error=True)  # Let Ray auto-detect GPUs
-    print("✅ Ray initialized with GPU (if available).")
+    ray.init(ignore_reinit_error=True)
+    print("✅ Ray initialized (GPU if available).")
 except Exception as e:
-    print(f"⚠️ Ray GPU init failed ({e}). Falling back to CPU.")
+    print(f"⚠️ Ray init failed ({e}). Falling back to CPU.")
     ray.init(ignore_reinit_error=True, num_gpus=0)
     print("✅ Ray initialized in CPU-only mode.")
 
-ray.init(ignore_reinit_error=True) # Initializing Ray
-
+# --- Env spaces ---
 env = env_creator({})
 agents = env.par_env.possible_agents
 obs_space = env.observation_space[agents[0]]
 act_space = env.action_space[agents[0]]
-
 
 # Shared policy
 policies = {
@@ -97,14 +90,15 @@ policies = {
 }
 policy_mapping_fn = lambda agent_id, *args, **kwargs: "shared_policy"
 
-config = ( # Ray RLlib configuration
-    PPOConfig() # Setting up the PPO algorithm configuration
-    .environment(env="sunt_env") # Defining the environment
-    .framework("torch") # Using PyTorch as the framework
-    .env_runners(num_env_runners=1) #.rollouts(num_rollout_workers=1)
-    .training(train_batch_size=4000, gamma=0.99) # Training batch size
+# --- PPO Config ---
+config = (
+    PPOConfig()
+    .environment(env="sunt_env")
+    .framework("torch")
+    .rollouts(num_rollout_workers=1)      # ✅ FIX: use rollouts instead of env_runners
+    .training(train_batch_size=4000, gamma=0.99)
     .resources(num_gpus=0)
-    .multi_agent( # Configuring multi-agents with a shared policy
+    .multi_agent(
         policies=policies,
         policy_mapping_fn=policy_mapping_fn
     )
