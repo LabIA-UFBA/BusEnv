@@ -105,31 +105,42 @@ src/
 
 ## ⚡ Installation & Usage
 
+Before proceeding, make sure you have **Conda** installed.  
+👉 Download and install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (recommended) or [Anaconda](https://www.anaconda.com/download).  
+On WSL/Linux, you can install Miniconda with:
+
 ```bash
-# 1. Create a virtual environment
-python -m venv .venv
-# Linux / macOS
-source .venv/bin/activate
-# Windows (PowerShell)
-.venv\Scripts\Activate.ps1
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+bash miniconda.sh
+~/miniconda3/bin/conda init
+exec "$SHELL"
+```
+
+
+```bash
+# 1. Create a conda environment
+conda create -n graphx python=3.12.3
+conda activate graphx
 
 # 2. Upgrade basic tools
-pip install --upgrade pip setuptools
+pip install --upgrade pip setuptools wheel
 
-# 3. Install dependencies in editable mode
+# 3. Install dependencies in editable mode (with extras)
 pip install -e ".[rllib,data,viz,test]"
 
-# 4. (Linux / macOS) Export PYTHONPATH
+# 4. Export PYTHONPATH
+# Linux / macOS
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-#    (Windows PowerShell)
+# Windows (PowerShell)
 $env:PYTHONPATH = (Get-Location).Path + ";" + $env:PYTHONPATH
 
-# 5. Unzip the real route data (required for training) - Too big to upload on git without zip
+# 5. Unzip the real route data (required for training)
 unzip src/training_observation/real_routes.zip -d src/training_observation/
 
 # 6. Run tests
 pytest -q
+
 ```
 
 ### CLI (`graphx`)

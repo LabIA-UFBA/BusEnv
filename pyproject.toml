@@ -7,7 +7,7 @@ name = "graph-exploration"
 version = "0.1.0"
 description = "SUNT - MARL for urban mobility"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 authors = [
     {name = "Wesley Silva"},
     {name = "Rafael Costa"}
@@ -16,7 +16,14 @@ license = {text = "MIT"}
 dependencies = []
 
 [project.optional-dependencies]
-rllib = ["ray[rllib]>=2.10.0", "pettingzoo>=1.24.3", "supersuit>=3.9.3", "torch==2.4.1", "torchvision", "torchaudio"]
+rllib = [
+    "ray[rllib]>=2.10.0",
+    "pettingzoo>=1.24.3",
+    "supersuit>=3.9.3",
+    "torch==2.4.1",
+    "torchvision",
+    "torchaudio"
+]
 data = ["pandas>=2.0", "numpy>=1.24"]
 viz = ["matplotlib>=3.7", "networkx>=3.1"]
 test = ["pytest>=7.4"]
