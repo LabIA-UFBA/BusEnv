@@ -13,38 +13,16 @@ authors = [
     {name = "Rafael Costa"}
 ]
 license = {text = "MIT"}
-
-# Core dependencies always installed
-dependencies = [
-    "pyarrow>=12,<14"
-]
+dependencies = []
 
 [project.optional-dependencies]
-rllib = [
-    "ray[rllib]==2.10.0",
-    "ray[tune]",
-    "pettingzoo>=1.24.3",
-    "supersuit>=3.9.3",
-    "torch==2.4.1",
-    # match torchvision/torchaudio to torch 2.4.1 for CUDA/ABI compatibility
-    "torchvision==0.19.1",
-    "torchaudio==2.4.1"
-]
-data = [
-    "pandas>=2.0,<2.1",
-    "numpy>=1.24,<2.0"
-]
-viz = [
-    "matplotlib>=3.7",
-    "networkx>=3.1"
-]
-test = [
-    "pytest>=7.4"
-]
+rllib = ["ray[rllib]>=2.10.0", "pettingzoo>=1.24.3", "supersuit>=3.9.3", "torch==2.4.1", "torchvision", "torchaudio"]
+data = ["pandas>=2.0", "numpy>=1.24"]
+viz = ["matplotlib>=3.7", "networkx>=3.1"]
+test = ["pytest>=7.4"]
 
 [project.scripts]
 graphx = "src.cli:app"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+where = ["src"]

@@ -3,21 +3,23 @@ import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.tune.logger import TBXLoggerCallback
-from ray.train import RunConfig
+from ray.train import RunConfig  
 from ray.tune import TuneConfig
 from ray.tune.tuner import Tuner # Ray Tune API
-from pettingzoo.utils import parallel_to_aec
-from supersuit import pad_observations_v0, pad_action_space_v0
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-import pickle
+from pettingzoo.utils import parallel_to_aec # Importing PettingZoo for Ray RLlib compatibility
+from supersuit import pad_observations_v0, pad_action_space_v0 # Importing Supersuit for Ray RLlib compatibility
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
+from ray.tune.logger import TBXLoggerCallback
 
 
-# --- Environment creator ---
+
+
+# Creating and registering a multi-agent environment compatible with RLlib
 def env_creator(config):
-    from src.envs.sunt_env import parallel_env
+    import pickle
+    from src.envs.sunt_env import parallel_env # Import the custom environment
 
-    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__)) # Get the base directory
 
     # === Load the graph ===
     with open(os.path.join(BASE_DIR, "viz", "graph_gtfs_fev_2024.gpickle"), "rb") as f:
@@ -38,6 +40,7 @@ def env_creator(config):
     with open(os.path.join(obs_dir, "uptime_normalized.pkl"), "rb") as f:
         uptime_normalized = pickle.load(f)
 
+    # === Load the real routes and their metadata ===
     with open(os.path.join(obs_dir, "real_routes.pkl"), "rb") as f:
         real_routes = pickle.load(f)
 
@@ -55,7 +58,7 @@ def env_creator(config):
         occupancy_rate=occupancy_rate,
         uptime_normalized=uptime_normalized,
         real_routes=real_routes,
-        route_metadata=route_metadata
+        route_metadata=route_metadata  # <-- Pass the real routes and metadata
     )
 
     # === Wrappers ===
@@ -66,23 +69,24 @@ def env_creator(config):
     return env
 
 
-# Register the custom environment
-register_env("sunt_env", lambda config: env_creator(config))
+register_env("sunt_env", lambda config: env_creator(config))  # Register the custom environment in Ray RLlib
 
-# --- Ray init ---
+# --- Try GPU first, fall back to CPU if it fails ---
 try:
-    ray.init(ignore_reinit_error=True)
-    print("✅ Ray initialized (GPU if available).")
+    ray.init(ignore_reinit_error=True)  # Let Ray auto-detect GPUs
+    print("✅ Ray initialized with GPU (if available).")
 except Exception as e:
-    print(f"⚠️ Ray init failed ({e}). Falling back to CPU.")
+    print(f"⚠️ Ray GPU init failed ({e}). Falling back to CPU.")
     ray.init(ignore_reinit_error=True, num_gpus=0)
     print("✅ Ray initialized in CPU-only mode.")
 
-# --- Env spaces ---
+ray.init(ignore_reinit_error=True) # Initializing Ray
+
 env = env_creator({})
 agents = env.par_env.possible_agents
 obs_space = env.observation_space[agents[0]]
 act_space = env.action_space[agents[0]]
+
 
 # Shared policy
 policies = {
@@ -90,15 +94,14 @@ policies = {
 }
 policy_mapping_fn = lambda agent_id, *args, **kwargs: "shared_policy"
 
-# --- PPO Config ---
-config = (
-    PPOConfig()
-    .environment(env="sunt_env")
-    .framework("torch")
-    .rollouts(num_rollout_workers=1)      # ✅ FIX: use rollouts instead of env_runners
-    .training(train_batch_size=4000, gamma=0.99)
+config = ( # Ray RLlib configuration
+    PPOConfig() # Setting up the PPO algorithm configuration
+    .environment(env="sunt_env") # Defining the environment
+    .framework("torch") # Using PyTorch as the framework
+    .env_runners(num_env_runners=1) #.rollouts(num_rollout_workers=1)
+    .training(train_batch_size=4000, gamma=0.99) # Training batch size
     .resources(num_gpus=0)
-    .multi_agent(
+    .multi_agent( # Configuring multi-agents with a shared policy
         policies=policies,
         policy_mapping_fn=policy_mapping_fn
     )
