@@ -29,7 +29,7 @@ class parallel_env(ParallelEnv):
 
         self.network = network
         self.actions_amount = actions_amount
-        self.max_steps = max_steps
+        self.max_steps = max_steps 
         self.render_mode = render_mode
         self._num_agents = num_agents
 
@@ -75,14 +75,15 @@ class parallel_env(ParallelEnv):
         for agent_id in self.possible_agents:
             self.agents[agent_id] = {
                 "location": None,
-                "occupancy": self.occupancy_rate.get(agent_id, 0.0),  # Initializes with real value if available
-                "uptime": self.uptime_normalized.get(agent_id, 1.0),  # Same
+                "occupancy": 0.0,  # Start empty
+                "uptime": 1.0,  # Start fully operational
                 "fuel": 100.0,
                 "maintenance_status": "ok",
                 "schedule": [],
                 "route": None,                  # List of nodes
                 "route_idx": 0,                  # Starts at the beginning of the route
-                "needs_service": False          # Flag for maintenance
+                "needs_service": False,          # Flag for maintenance
+                "going_forward": True            # Direction of the agent's movement True = forward, False = backward
             }
 
         # Reward parameters
@@ -100,6 +101,7 @@ class parallel_env(ParallelEnv):
 
         self.default_travel_time = np.mean(list(self.avg_travel_time_AB.values())) # Default average travel time
         self.max_travel_time = 3250.0 # Maximum time found in the dataset (5 minutes and 25 seconds)
+        self.max_capacity = 80  # Maximum capacity of each agent
 
         self.real_routes = real_routes or {}
         self.route_metadata = route_metadata or {}
@@ -147,8 +149,8 @@ class parallel_env(ParallelEnv):
 
             self.agents_state[agent] = { # Internal state of the agent
                 "location": initial,
-                "occupancy": float(self.occupancy_rate.get(agent, 0.0)), # Agent occupancy rate
-                "uptime": float(self.uptime_normalized.get(agent, 1.0)), # Agent uptime
+                "occupancy": int(self.occupancy_rate.get(int(initial), 0.0) * self.max_capacity), # Agent occupancy rate
+                "uptime": float(self.uptime_normalized.get(initial, 1.0)), # Agent uptime
                 "fuel": 100.0,
                 "maintenance_status": "ok",
                 "schedule": [],
@@ -174,7 +176,7 @@ class parallel_env(ParallelEnv):
 
             observations[agent] = np.array([
                 self.current_time / (24 * 60 * 60), # Time of day normalized (0.0 to 1.0)
-                self.occupancy_rate.get(agent, 0.0), # Agent occupancy rate
+                self.agents_state[agent]["occupancy"], # Agent occupancy rate
                 normalized_travel_time, # Normalized average travel time
                 self.future_demand_at_B.get(next_node, 0.0), # Future demand at the next node
                 self.uptime_normalized.get(agent, 1.0), # Normalized uptime (0.0 to 1.0)
@@ -187,6 +189,8 @@ class parallel_env(ParallelEnv):
                 "chosen_route": path, # Chosen route for the agent
                 "expected_time": self.expected_times[agent]
             }
+
+        print(f"[RESET] Environment reset. Agents: {self.agents}")
 
         return observations, infos
 
@@ -232,66 +236,85 @@ class parallel_env(ParallelEnv):
                 truncated = False
 
             elif action == 1:  # MOVE
-                if idx + 1 < len(route): # verifies if there is a next node in the route
-                    next_node = route[idx + 1] # Move to next node in the route
-                    travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time) # Average travel time between the current node and the next node
-                    prev_occ = state.get("occupancy", 0.0) # Previous occupancy rate
+                going_forward = state.get("going_forward", True)
+                route_length = len(route)
 
-                    if(curr_node, next_node) in self.occupancy_rate:
-                        expected_occ = self.occupancy_rate[(curr_node,next_node)] # Expected occupancy rate between the current node and the next node
-                        
-                        delta_occ = expected_occ - prev_occ # Difference between expected and previous occupancy
-                        new_occ = prev_occ + delta_occ # New occupancy is previous occupancy plus difference
-                        # new_occ = max(min(new_occ, 1.0), 0.0) # Ensures the new occupancy is between 0.0 and 1.0
-                        occupancy = new_occ # Updates the agent's occupancy rate
+                # Determine next node and update route index
+                if going_forward:
+                    if idx + 1 < route_length:
+                        next_node = route[idx + 1]
+                        self.agents_state[agent]["route_idx"] += 1
                     else:
-                        occupancy = prev_occ # If no occupancy rate is defined, keeps the previous occupancy
+                        # Reached end of route, start going back
+                        state["going_forward"] = False
+                        self.agents_state[agent]["route_idx"] -= 1
+                        next_node = route[self.agents_state[agent]["route_idx"]]
+                else:  # Returning
+                    if idx > 0:
+                        self.agents_state[agent]["route_idx"] -= 1
+                        next_node = route[self.agents_state[agent]["route_idx"]]
+                    else:
+                        # Reached start, start going forward again
+                        state["going_forward"] = True
+                        self.agents_state[agent]["route_idx"] += 1
+                        next_node = route[self.agents_state[agent]["route_idx"]]
 
-                    # occupancy = self.occupancy_rate.get((curr_node, next_node), 0.0) # Occupancy rate between the current node and the next node
+                # Pretty print to debug route direction
+                direction = "➡️ going forward" if state.get("going_forward", True) else "⬅️ going backward"
+                print(
+                    f"[MOVE] Agent {agent} | {direction} | {curr_node} -> {next_node} "
+                    f"(t={self.current_time/3600:.2f}h, occ={state.get('occupancy',0):.1f}, fuel={state.get('fuel',0):.1f}, uptime={state.get('uptime',0):.2f})"
+                )
 
-                    self.current_time += travel_time # Updates the global time
-                    self.estimated_times[agent] += travel_time # Updates the agent's estimated time
-                    self.agents_state[agent]["route_idx"] += 1 # Advances the agent's route index
-                    self.agents_state[agent]["occupancy"] = occupancy # Updates the agent's occupancy rate
+                # Calculate travel time
+                travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
 
-                    # Updates uptime and fuel
-                    state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0) # Updates uptime
-                    state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0) # Updates fuel
-
-                    self.states[agent] = next_node # Updates the agent's state to the next node
-
-                    if next_node not in self.headways: # If the next node does not have a arrival history
-                        self.headways[next_node] = []
-                    self.headways[next_node].append(self.current_time) # Adds the current time to the arrival history of the next node
-
-                    print(f"[STEP Action MOVE] self.estimated_times[agent]: {self.estimated_times[agent]}")
-                    print(f"[STEP Action MOVE] self.expected_times[agent]: {self.expected_times[agent]}")
-                    print(f"[STEP Action MOVE] self.headways[next_node]: {self.headways[next_node]}")
-                    print(f"[STEP Action MOVE] travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time): {travel_time}")
-                    print(f"[STEP]  self.current_time: {self.current_time}")
-                    print(f"[STEP]  self.occupancy_rate.get((curr_node, next_node), 0.0): {self.occupancy_rate.get((curr_node, next_node), 0.0)}")
-                    print(f"[STEP]  state['uptime']: {state['uptime']}")
-
-                    reward = self.reward.getReward( # Calculates the reward based on the current state
-                        new_state=next_node, # New state of the agent
-                        previous_state=curr_node, # Previous state of the agent
-                        action=action, # Action taken by the agent
-                        target=route[-1], # Target node of the route
-                        network=self.network,
-                        estimated_time=self.estimated_times[agent], # Estimated time of the agent
-                        expected_time=self.expected_times[agent], # Expected time of the route
-                        delay=0,
-                        agent_state=state,
-                        headways=self.headways[next_node]
-                    )
-
-                    terminated = next_node == route[-1] # finishes if the agent reached the end of the route
-                    truncated = self.steps[agent] >= self.max_steps # truncates if the agent exceeded the maximum number of steps
-
+                # Update occupancy
+                prev_occ = state.get("occupancy", 0.0)
+                if curr_node in self.occupancy_rate:
+                    expected_occ = self.occupancy_rate[int(curr_node)]
+                    expected_occ_abs = int(expected_occ * self.max_capacity)
+                    delta_occ = expected_occ_abs - prev_occ
+                    new_occ = prev_occ + delta_occ
+                    occupancy = max(0, min(new_occ, self.max_capacity))
                 else:
-                    reward = -1.0  # already at the end of the route, cannot move
-                    terminated = False
-                    truncated = False
+                    occupancy = prev_occ
+                state["occupancy"] = occupancy
+
+                # Update time, uptime, and fuel
+                self.current_time += travel_time
+                self.estimated_times[agent] += travel_time
+                state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
+                self.states[agent] = next_node
+
+                # Update headways
+                if next_node not in self.headways:
+                    self.headways[next_node] = []
+                self.headways[next_node].append(self.current_time)
+
+                # Calculate reward
+                reward = self.reward.getReward(
+                    new_state=next_node,
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=self.headways[next_node]
+                )
+
+                # Termination only at the end of the day
+                terminated = self.current_time >= 24 * 3600  # or DAY_DURATION if defined
+                truncated = self.steps[agent] >= self.max_steps
+
+                print(f"[INFO] self.steps[agent] = {self.steps[agent]}")
+
+                if self.current_time >= 24 * 3600: 
+                    print(f"[END OF DAY] Agent {agent} reached end of day at time {self.current_time/3600:.2f}h (>= 24h).")
 
             elif action == 2:  # SERVICE_CENTER
                 sc_node = self.get_nearest_service_center(curr_node) # Gets the nearest service center node
@@ -317,16 +340,19 @@ class parallel_env(ParallelEnv):
             route_idx = self.agents_state[agent]["route_idx"]
             curr_node = self.states[agent]
             next_node = (
-                route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
+                route[route_idx + 1] if route_idx + 1 < len(route) else curr_node 
             )
 
             travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
+            print(f"[STEP] agent: {agent}")
             print(f"[STEP] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
+            print(f"[STEP]  self.current_time : {self.current_time}") 
             print(f"[STEP]  self.current_time / (24 * 60 * 60): {self.current_time / (24 * 60 * 60)}")
             print(f"[STEP]  normalized_travel_time: {normalized_travel_time}")
-            print(f"[STEP]  self.occupancy_rate.get((curr_node, next_node), 0.0): {self.occupancy_rate.get((curr_node, next_node), 0.0)}")
+            print(f"[STEP]  self.occupancy_rate.get(curr_node, 0.0): {self.occupancy_rate.get(int(curr_node), 0.0)}")
+            print(f"[STEP]  state['occupancy']: {state['occupancy']}")
             print(f"[STEP]  state['uptime']: {state['uptime']}")
             print(f"[STEP]  curr_node: {curr_node}")
             print(f"[STEP]  next_node: {next_node}")
@@ -337,7 +363,7 @@ class parallel_env(ParallelEnv):
 
             observations[agent] = np.array([
                 self.current_time / (24 * 60 * 60), # Normalized time of day (0.0 to 1.0)
-                self.occupancy_rate.get((curr_node, next_node), 0.0), # Occupancy rate between current node and next node
+                state["occupancy"],  # Occupancy ratio of the bus (0.0 to 1.0)
                 normalized_travel_time, # Normalized average travel time
                 self.future_demand_at_B.get(next_node, 0.0), # Future demand at next node
                 state["uptime"], # Normalized uptime (0.0 to 1.0)

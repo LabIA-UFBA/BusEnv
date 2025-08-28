@@ -35,6 +35,8 @@ def main(argv=None):
         .add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("view-graph", help="Tool viewGraph") \
         .add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("view-especific-node", help="Tool viewEspecificNode") \
+        .add_argument("args", nargs=argparse.REMAINDER)
 
     args = p.parse_args(argv)
 
@@ -48,6 +50,7 @@ def main(argv=None):
         "see-routes": "src.tools.see_routes",
         "view-pkl": "src.tools.view_pkl",
         "view-graph": "src.viz.view_graph",
+        "view-especific-node": "src.tools.view_especific_nodePkl",
     }
 
     mod = modmap[args.cmd]

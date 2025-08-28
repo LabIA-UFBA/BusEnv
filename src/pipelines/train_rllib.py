@@ -51,7 +51,7 @@ def env_creator(config):
     env = parallel_env(
         network=G,
         actions_amount=3,
-        max_steps=100,
+        max_steps=1000000,
         num_agents=3,
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
