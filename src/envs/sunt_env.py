@@ -149,7 +149,7 @@ class parallel_env(ParallelEnv):
 
             self.agents_state[agent] = { # Internal state of the agent
                 "location": initial,
-                "occupancy": int(self.occupancy_rate.get(int(initial), 0.0) * self.max_capacity), # Agent occupancy rate
+                "occupancy": int(self.occupancy_rate.get(int(initial), 0.0)), # Agent occupancy rate
                 "uptime": float(self.uptime_normalized.get(initial, 1.0)), # Agent uptime
                 "fuel": 100.0,
                 "maintenance_status": "ok",
@@ -233,6 +233,7 @@ class parallel_env(ParallelEnv):
                 state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0) # update the uptime
                 state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0) # Updates fuel
                 terminated = False
+                terminated = self.current_time >= 24 * 3600  # or DAY_DURATION if defined
                 truncated = False
 
             elif action == 1:  # MOVE
@@ -271,14 +272,20 @@ class parallel_env(ParallelEnv):
 
                 # Update occupancy
                 prev_occ = state.get("occupancy", 0.0)
-                if curr_node in self.occupancy_rate:
+                if int(curr_node) in self.occupancy_rate:
                     expected_occ = self.occupancy_rate[int(curr_node)]
-                    expected_occ_abs = int(expected_occ * self.max_capacity)
-                    delta_occ = expected_occ_abs - prev_occ
-                    new_occ = prev_occ + delta_occ
-                    occupancy = max(0, min(new_occ, self.max_capacity))
+                    # expected_occ_abs = int(expected_occ * self.max_capacity) # Expected occupancy (absolute)
+                    # delta_occ = expected_occ_abs - prev_occ
+
+                    alpha = 0.5 # Smoothing factor
+                    new_occ = (1 - alpha) * prev_occ + alpha * expected_occ
+                    occupancy = max(0.0, min(new_occ, 1.0)) # Clamp between 0 and 1
+                    print(f"[DEBUG] Expected Occupancy: {expected_occ:.2f}, Previous Occupancy: {prev_occ:.2f}, New Occupancy: {occupancy:.2f}")
                 else:
+                    print(f"[DEBUG] No Expected Occupancy for Node {curr_node}. Using Previous Occupancy: {prev_occ:.2f}")
                     occupancy = prev_occ
+
+                print(f"[DEBUG] Occupancy: {occupancy:.2f}")
                 state["occupancy"] = occupancy
 
                 # Update time, uptime, and fuel
@@ -313,22 +320,63 @@ class parallel_env(ParallelEnv):
 
                 print(f"[INFO] self.steps[agent] = {self.steps[agent]}")
 
-                if self.current_time >= 24 * 3600: 
-                    print(f"[END OF DAY] Agent {agent} reached end of day at time {self.current_time/3600:.2f}h (>= 24h).")
-
             elif action == 2:  # SERVICE_CENTER
                 sc_node = self.get_nearest_service_center(curr_node) # Gets the nearest service center node
-                travel_time = self.avg_travel_time_AB.get((curr_node, sc_node), self.default_travel_time) # Travel time to the service center
-                self.current_time += travel_time # Updates the global time
-                self.estimated_times[agent] += travel_time # Updates the agent's estimated time
 
-                state["fuel"] = 100.0 # Refuels the agent
-                state["uptime"] = 1.0 # Resets the uptime
-                state["maintenance_status"] = "ok" # Resets the maintenance status
-                self.states[agent] = sc_node # Updates the agent's state to the service center
+                try:
+                    # Shortest path in terms of travel time (weights = avg_travel_time_AB)
+                    path = nx.shortest_path(
+                        self.network, source=curr_node, target=sc_node,
+                        weight=lambda u, v, d: self.avg_travel_time_AB.get((u,v), self.default_travel_time)
+                    )
 
-                reward = -0.5 # Penalizes the action of going to the service center
-                terminated = False
+                    total_travel_time = 0.0
+                    total_fuel_cost = 0.0
+
+                    # Walk through the path and accumulate cost
+                    for u, v in zip(path[:-1], path[1:]):
+                        edge_time = self.avg_travel_time_AB.get((u, v), self.default_travel_time) # Get travel time for the edge
+                        edge_time *= 0.3  # Apply 30% of the default/avg travel time (no stops on the points)
+                        total_travel_time += edge_time # Accumulate travel time
+                        total_fuel_cost += edge_time / 300.0 # Accumulate fuel cost
+                    
+                    print(f"[SERVICE_CENTER] Agent {agent} traveling path {path} "
+                          f"with total travel time={total_travel_time:.2f}, fuel cost={total_fuel_cost:.2f}")
+                except nx.NetworkXNoPath:
+                    print(f"[SERVICE_CENTER][ERROR] No path from {curr_node} to {sc_node}")
+                    reward = -10.0
+                    terminated = False
+                    truncated = False
+                else:
+                    
+                    reward = 0.0
+                    if state["fuel"] > 0.8 and state["uptime"] > 0.8:
+                        reward -= 0.5 * total_travel_time  # extra penalty for unnecessary trip
+                    
+                    # Check fuel availability
+                    if state["fuel"] < total_fuel_cost:
+                        print(f"[SERVICE_CENTER][FAIL] Agent {agent} has insufficient fuel "
+                            f"({state['fuel']:.2f}) to reach service center (needs {total_fuel_cost:.2f})")
+                        reward = -20.0  # Strong penalty
+                    else:
+                        # Update global time and agent time 
+                        self.current_time += total_travel_time
+                        self.estimated_times[agent] += total_travel_time
+
+                        # Consume fuel and uptime during the trip
+                        state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
+                        state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
+
+                        # Arrived → reset fuel and uptime
+                        state["fuel"] = 100.0
+                        state["uptime"] = 1.0
+                        state["maintenance_status"] = "ok"
+                        self.states[agent] = sc_node
+
+                        # Penalize more if service center trip was long
+                        reward = -1.0 * (1 + total_travel_time / 600.0)  # -1 base, extra penalty per 10min travel
+
+                terminated = self.current_time >= 24 * 3600  # or DAY_DURATION if defined
                 truncated = self.steps[agent] >= self.max_steps # truncates if the agent exceeded the maximum number of steps
 
             else:
@@ -354,6 +402,7 @@ class parallel_env(ParallelEnv):
             print(f"[STEP]  self.occupancy_rate.get(curr_node, 0.0): {self.occupancy_rate.get(int(curr_node), 0.0)}")
             print(f"[STEP]  state['occupancy']: {state['occupancy']}")
             print(f"[STEP]  state['uptime']: {state['uptime']}")
+            print(f"[STEP]  state['fuel']: {state['fuel']}")
             print(f"[STEP]  curr_node: {curr_node}")
             print(f"[STEP]  next_node: {next_node}")
             print(f"[STEP]  travel_time: {travel_time}")
@@ -382,6 +431,9 @@ class parallel_env(ParallelEnv):
                 "next_stop": next_node, # Next node in the agent's route
                 "headways": self.headways.get(curr_node, []), # Arrival history at the current node
             }
+        
+        if self.current_time >= 24 * 3600: 
+                    print(f"[END OF DAY] Agent {agent} reached end of day at time {self.current_time/3600:.2f}h (>= 24h).")
 
         self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])] # Remove terminated or truncated agents
 

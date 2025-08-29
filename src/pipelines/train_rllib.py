@@ -111,7 +111,7 @@ config = ( # Ray RLlib configuration
 tuner = Tuner(  # The Tuner is the heart of experimentation with ray.tune
     "PPO", # PPO algorithm from Ray RLlib
     run_config=RunConfig( # Pass a RunConfig (from ray.train) to control execution, checkpoints, logs, etc
-        stop={"training_iteration": 5},
+        stop={"training_iteration": 5}, # Stop training after N iterations
         storage_path=os.path.abspath("./results"), # local_dir ="./results",
         name="ppo_sunt_experiment",
         checkpoint_config=ray.train.CheckpointConfig(
