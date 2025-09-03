@@ -3,7 +3,6 @@ import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.impala import IMPALAConfig  # Import IMPALA algorithm configuration
 from ray.train import RunConfig  
 from ray.tune import TuneConfig
@@ -54,7 +53,7 @@ def env_creator(config):
         network=G,
         actions_amount=3,
         max_steps=1000000,
-        num_agents=3,
+        num_agents=5,
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
         occupancy_rate=occupancy_rate,
@@ -142,14 +141,14 @@ else:
 tuner = Tuner(
     algo_name,
     run_config=RunConfig(
-        stop={"training_iteration": 10},  # Stop after 10 training iterations
+        stop={"training_iteration": 5},  # Stop after 80 training iterations
         storage_path=os.path.abspath("./results"),  # Directory to store results
         name=exp_name,  # Experiment name
         checkpoint_config=ray.train.CheckpointConfig(
             checkpoint_at_end=True,          # Save checkpoint at the end
             checkpoint_frequency=2           # Save every 2 iterations
         ),
-        verbose=1,                           # Logging verbosity
+        verbose=3,                           # Logging verbosity
         callbacks=[TBXLoggerCallback()]      # TensorBoard logging callback
     ),
     tune_config=TuneConfig(),

@@ -167,6 +167,9 @@ graphx view-pkl -- --help
 # Visualize graphs
 graphx view-graph -- --help
 
+# Visualize a Especific Node Information
+graphx view-especific-node -- --help
+
 # Run the SUNT environment entrypoint
 graphx env-sunt --
 ```
