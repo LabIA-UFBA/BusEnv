@@ -1,0 +1,75 @@
+Failure # 1 (occurred at 2025-09-06_17-04-44)
+Traceback (most recent call last):
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/trial_runner.py", line 890, in _process_trial
+    results = self.trial_executor.fetch_result(trial)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/ray_trial_executor.py", line 788, in fetch_result
+    result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/_private/client_mode_hook.py", line 105, in wrapper
+    return func(*args, **kwargs)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/worker.py", line 1625, in get
+    raise value.as_instanceof_cause()
+ray.exceptions.RayTaskError(AttributeError): [36mray::IA2CTrainer.train()[39m (pid=43104, ip=192.168.2.103, repr=IA2CTrainer)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer.py", line 679, in train
+    raise e
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer.py", line 668, in train
+    result = Trainable.train(self)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/trainable.py", line 283, in train
+    result = self.step()
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer_template.py", line 206, in step
+    step_results = next(self.train_exec_impl)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 756, in __next__
+    return next(self.built_iterator)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 783, in apply_foreach
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 843, in apply_filter
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 843, in apply_filter
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 783, in apply_foreach
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 876, in apply_flatten
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 783, in apply_foreach
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 783, in apply_foreach
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 783, in apply_foreach
+    for item in it:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 471, in base_iterator
+    yield ray.get(futures, timeout=timeout)
+ray.exceptions.RayTaskError(AttributeError): [36mray::RolloutWorker.par_iter_next()[39m (pid=43103, ip=192.168.2.103, repr=<ray.rllib.evaluation.rollout_worker.RolloutWorker object at 0x7352e90461f0>)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/util/iter.py", line 1151, in par_iter_next
+    return next(self.local_it)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/evaluation/rollout_worker.py", line 378, in gen_rollouts
+    yield self.sample()
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/evaluation/rollout_worker.py", line 753, in sample
+    batches = [self.input_reader.next()]
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/evaluation/sampler.py", line 103, in next
+    batches = [self.get_data()]
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/evaluation/sampler.py", line 233, in get_data
+    item = next(self._env_runner)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/evaluation/sampler.py", line 591, in _env_runner
+    summarize(unfiltered_obs)))
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 20, in summarize
+    return _printer.pformat(_summarize(obj))
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in _summarize
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in <dictcomp>
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in _summarize
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in <dictcomp>
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in _summarize
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 25, in <dictcomp>
+    return {k: _summarize(v) for k, v in obj.items()}
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/utils/debug.py", line 39, in _summarize
+    elif obj.dtype == np.object or obj.dtype.type is np.str_:
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/numpy/__init__.py", line 305, in __getattr__
+    raise AttributeError(__former_attrs__[attr])
+AttributeError: module 'numpy' has no attribute 'object'.
+`np.object` was a deprecated alias for the builtin `object`. To avoid this error in existing code, use `object` by itself. Doing this will not modify any behavior and is safe. 
+The aliases was originally deprecated in NumPy 1.20; for more details and guidance see the original release note at:
+    https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations
+

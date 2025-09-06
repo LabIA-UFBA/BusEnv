@@ -1,0 +1,21 @@
+env: sunt_env
+
+env_args:
+  actions_amount: 3
+  max_steps: 1000000
+  num_agents: 5
+
+  # === Caminhos para arquivos necessários ===
+  network_path: "./viz/graph_gtfs_fev_2024.gpickle"
+  avg_travel_time_AB_path: "./training_observation/avg_travel_time_AB.pkl"
+  future_demand_at_B_path: "./training_observation/future_demand_at_B.pkl"
+  occupancy_rate_path: "./training_observation/occupancy_rate.pkl"
+  uptime_normalized_path: "./training_observation/uptime_normalized.pkl"
+  real_routes_path: "./training_observation/real_routes.pkl"
+  route_metadata_path: "./training_observation/route_metadata.pkl"
+
+# === Flags de treino ===
+mask_flag: False
+global_state_flag: False
+opp_action_in_cc: False
+agent_level_batch_update: False
