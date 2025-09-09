@@ -12,26 +12,26 @@ from supersuit import pad_observations_v0, pad_action_space_v0
 
 
 # ------------------------------
-# Classe RLlibSuntBus
+# Class RLlibSuntBus
 # ------------------------------
 class RLlibSuntBus(MultiAgentEnv):
     def __init__(self, env_config):
         BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-        # Carregar grafo
+        # Load graph
         graph_path = os.path.join(BASE_DIR, "viz/graph_gtfs_fev_2024.gpickle")
         if not os.path.exists(graph_path):
-            raise FileNotFoundError(f"Arquivo não encontrado: {graph_path}")
+            raise FileNotFoundError(f"File not found: {graph_path}")
         with open(graph_path, "rb") as f:
             G = pickle.load(f)
 
-        # Carregar observações
+        # Load observations
         obs_dir = os.path.join(BASE_DIR, "training_observation")
 
         def load_pickle(filename):
             path = os.path.join(obs_dir, filename)
             if not os.path.exists(path):
-                raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+                raise FileNotFoundError(f"File not found: {path}")
             with open(path, "rb") as f:
                 return pickle.load(f)
 
@@ -42,12 +42,12 @@ class RLlibSuntBus(MultiAgentEnv):
         real_routes = load_pickle("real_routes.pkl")
         route_metadata = load_pickle("route_metadata.pkl")
 
-        # Criar env paralelizado
+        # Create parallel env
         self.env = parallel_env(
             network=G,
             actions_amount=3,
             max_steps=1000000,
-            num_agents=1,
+            num_agents=5,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
@@ -56,7 +56,7 @@ class RLlibSuntBus(MultiAgentEnv):
             route_metadata=route_metadata,
         )
 
-        # Wrappers do supersuit
+        # Wrappers of supersuit
         self.env = pad_observations_v0(self.env)
         self.env = pad_action_space_v0(self.env)
 
@@ -64,7 +64,7 @@ class RLlibSuntBus(MultiAgentEnv):
         self.agents = self.env.possible_agents.copy()
         self.num_agents = len(self.agents)
 
-        # Espaços
+        # Spaces
         self.observation_space = GymDict({
             "obs": self.env.observation_space(self.agents[0])
         })
@@ -75,14 +75,14 @@ class RLlibSuntBus(MultiAgentEnv):
         }
 
     def reset(self):
-        """Reseta o env paralelo e retorna obs no formato RLlib."""
+        """Reset the parallel env and return observations in RLlib format."""
         original_obs = self.env.reset()  # dict: {agent_id: obs}
         self.agents = list(original_obs.keys())
         obs = {agent: {"obs": np.array(o)} for agent, o in original_obs.items()}
         return obs
 
     def step(self, action_dict):
-        """Executa uma etapa no env paralelo com action_dict do RLlib."""
+        """Execute a step in the parallel env with action_dict from RLlib."""
         o, r, d, info = self.env.step(action_dict)
 
         obs = {agent: {"obs": np.array(o[agent])} for agent in o.keys()}
@@ -101,7 +101,8 @@ class RLlibSuntBus(MultiAgentEnv):
     def close(self):
         self.env.close()
 
-    def get_env_info(self):
+    def get_env_info(self): # Returns env_info dict
+        """Return environment information in a dictionary format."""
         env_info = {
             "space_obs": self.observation_space,
             "space_act": self.action_space,
@@ -124,22 +125,22 @@ class RLlibSuntBus(MultiAgentEnv):
 
 
 # ------------------------------
-# Registrar ambiente no MARLlib
+# Register environment in MARLlib
 # ------------------------------
 ENV_REGISTRY["sunt_bus"] = RLlibSuntBus
 
 # ------------------------------
-# Dicionário de Configuração do Ambiente
+# Environment Configuration Dictionary
 # ------------------------------
 env_config = {
     "map_name": "sunt_bus",
 }
 
-# 1. CRIAR A TUPLA COM A INSTÂNCIA DO AMBIENTE
+# 1. CREATE A TUPLE WITH THE ENVIRONMENT INSTANCE
 env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
 
 # ------------------------------
-# Selecionar algoritmo e configurar modelo
+# Select algorithm and configure model
 # ------------------------------
 algo = marl.algos.ia2c(hyperparam_source="common")
 
@@ -148,16 +149,16 @@ model_config = {
     "encode_layer": "128-128",
 }
 
-# 2. CONSTRUIR O MODELO (já estava correto, usando env_tuple)
+# 2. Build the model with the env_tuple
 model = marl.build_model(env_tuple, algo, model_config)
 
 # ------------------------------
-# Configurações de execução
+# Execution configurations
 # ------------------------------
 run_config = {
     "local_mode": False,
-    "stop": {"episodes_total": 1000},
-    "checkpoint_freq": 50,
+    "stop": {"episodes_total": 10000},
+    "checkpoint_freq": 200,
     "num_gpus": 0,
     "num_workers": 2,
     "share_policy": "individual",
@@ -173,11 +174,11 @@ final_config.update(custom_config)
 stop_conditions = final_config.pop("stop")
 
 # ------------------------------
-# Treinar (Com a chamada final e correta)
+# Train (With the final and correct call)
 # ------------------------------
-# 3. PASSE A MESMA `env_tuple` PARA A FUNÇÃO FIT
+# 3. PASS THE SAME `env_tuple` TO THE FIT FUNCTION
 algo.fit(
-    env=env_tuple, # <-- MUDANÇA PRINCIPAL AQUI
+    env=env_tuple, 
     model=model,
     stop=stop_conditions,
     **final_config

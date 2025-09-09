@@ -190,12 +190,12 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(next_node)],
             ], dtype=np.float32)
 
-            # 2. APLIQUE O CLIP AQUI!
+            # APPLY CLIPPING HERE!
             #    Use os limites (low/high) que você definiu no seu observation_space
             clipped_obs = np.clip(
                 obs_array,
-                self.observation_space(agent).low,  # Acessando os limites do Box space
-                self.observation_space(agent).high, # Acessando os limites do Box space
+                self.observation_space(agent).low,  # Accessing the limits of the Box space
+                self.observation_space(agent).high, # Accessing the limits of the Box space
             )
 
             observations[agent] = clipped_obs
@@ -208,7 +208,7 @@ class parallel_env(ParallelEnv):
 
         #print(f"[RESET] Environment reset. Agents: {self.agents}")
 
-        # ✅ Corrigido: retorna apenas o dict de observações
+        # return only observations
         return observations
 
     
@@ -409,7 +409,7 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(next_node)],
             ], dtype=np.float32)
 
-            # 2. APLIQUE O CLIP AQUI!
+            # APPLY CLIPPING HERE!
             clipped_obs = np.clip(
                 obs_array,
                 self.observation_space(agent).low,
@@ -434,7 +434,7 @@ class parallel_env(ParallelEnv):
 
         self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])]
 
-        # ✅ Fundir terminations + truncations → dones
+        # fusing terminations + truncations → dones
         dones = {a: (terminations[a] or truncations[a]) for a in rewards}
         dones["__all__"] = all(dones.values())
 
