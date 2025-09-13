@@ -145,7 +145,7 @@ env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", forc
 algo = marl.algos.ia2c(hyperparam_source="common")
 
 model_config = {
-    "core_arch": "mlp",
+    "core_arch": "mlp", # "rnn" or "mlp" choose of the config
     "encode_layer": "128-128",
 }
 

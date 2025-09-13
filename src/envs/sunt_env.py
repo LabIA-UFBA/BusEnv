@@ -64,7 +64,7 @@ class parallel_env(ParallelEnv):
         self.uptime_normalized = uptime_normalized or {}
 
         # --- Global clock and statistics ---
-        self.current_time = 6 * 60 * 60  
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents} # Every agent starts at 6:00 AM 
         self.headways = {}
         self.sync_stats = {}
 
@@ -132,7 +132,7 @@ class parallel_env(ParallelEnv):
         self.delays = {}
         self.estimated_times = {}
         self.expected_times = {}
-        self.current_time = 6 * 60 * 60  # 6:00 AM
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # 6:00 AM
         self.headways = {}
         self.sync_stats = {}
         self.agent_states = {}
@@ -180,7 +180,7 @@ class parallel_env(ParallelEnv):
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
             obs_array = np.array([
-                self.current_time / (24 * 60 * 60),
+                self.agent_times[agent] / (24 * 60 * 60),
                 self.agent_states[agent]["occupancy"],
                 normalized_travel_time,
                 self.future_demand_at_B.get(next_node, 0.0),
@@ -246,10 +246,10 @@ class parallel_env(ParallelEnv):
             if action == 0:  
                 reward = -0.1  # Penalty for waiting
                 elapsed = 60.0  # Assume 1 minute of waiting
-                self.current_time += elapsed
+                self.agent_times[agent] += elapsed # Update agent's internal clock
                 state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0)
                 state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0)
-                terminated = self.current_time >= 24 * 3600
+                terminated = self.agent_times[agent] >= 24 * 3600
                 truncated = False
 
             # ================= MOVE =================
@@ -293,7 +293,7 @@ class parallel_env(ParallelEnv):
                     occupancy = prev_occ
 
                 state["occupancy"] = occupancy
-                self.current_time += travel_time
+                self.agent_times[agent] += travel_time
                 self.estimated_times[agent] += travel_time
                 state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
                 state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
@@ -301,7 +301,7 @@ class parallel_env(ParallelEnv):
 
                 if next_node not in self.headways:
                     self.headways[next_node] = []
-                self.headways[next_node].append(self.current_time)
+                self.headways[next_node].append(self.agent_times[agent])
 
                 reward = self.reward.getReward(
                     new_state=next_node,
@@ -316,7 +316,7 @@ class parallel_env(ParallelEnv):
                     headways=self.headways[next_node]
                 )
 
-                terminated = self.current_time >= 24 * 3600
+                terminated = self.agent_times[agent] >= 24 * 3600
                 truncated = self.steps[agent] >= self.max_steps
 
             # ================= SERVICE CENTER =================
@@ -355,7 +355,7 @@ class parallel_env(ParallelEnv):
                         #      f"({state['fuel']:.2f}) needs {total_fuel_cost:.2f}")
                         reward = -20.0
                     else:
-                        self.current_time += total_travel_time
+                        self.agent_times[agent] += total_travel_time
                         self.estimated_times[agent] += total_travel_time
                         state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
                         state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
@@ -366,7 +366,7 @@ class parallel_env(ParallelEnv):
                         self.states[agent] = sc_node
                         reward = -1.0 * (1 + total_travel_time / 600.0)
 
-                terminated = self.current_time >= 24 * 3600
+                terminated = self.agent_times[agent] >= 24 * 3600
                 truncated = self.steps[agent] >= self.max_steps
 
             else:
@@ -399,7 +399,7 @@ class parallel_env(ParallelEnv):
 
             # 1. Crie o array de observação como antes
             obs_array = np.array([
-                self.current_time / (24 * 60 * 60),
+                self.agent_times[agent] / (24 * 60 * 60),
                 state["occupancy"],
                 normalized_travel_time,
                 self.future_demand_at_B.get(next_node, 0.0),
@@ -428,9 +428,9 @@ class parallel_env(ParallelEnv):
                 "next_stop": next_node,
                 "headways": self.headways.get(curr_node, []),
             }
-
-        if self.current_time >= 24 * 3600:
-            print(f"[END OF DAY] Simulation ended at {self.current_time/3600:.2f}h (>= 24h).")
+            
+            if self.agent_times[agent] >= 24 * 3600:
+                print(f"[END OF DAY] Simulation ended at {self.agent_times[agent]/3600:.2f}h (>= 24h).")
 
         self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])]
 
