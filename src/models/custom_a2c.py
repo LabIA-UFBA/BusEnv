@@ -16,6 +16,7 @@ from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID, LocalOptimizer
 
 from ray.rllib.agents.a3c.a2c import A2CTrainer, A2C_DEFAULT_CONFIG
+from ray.rllib.agents.callbacks import DefaultCallbacks
 
 torch, nn = try_import_torch()
 
@@ -119,8 +120,29 @@ def get_policy_class(config_):
     if config_["framework"] == "torch":
         return CustomA2CPolicyTorch
 
+# ======================
+# 3. Custom Callbacks para logar métricas por agente
+# ======================
+
+class CustomCallbacks(DefaultCallbacks):
+    def on_train_result(self, *, trainer=None, algorithm=None, result: dict, **kwargs):
+        algo = trainer if trainer is not None else algorithm
+
+        # Exemplo: log rewards médios por política
+        if "hist_stats" in result:
+            for policy_id, rewards in result["hist_stats"].items():
+                if isinstance(rewards, list) and rewards:
+                    mean_r = sum(rewards) / len(rewards)
+                    result.setdefault("custom_metrics", {})[f"{policy_id}_reward_mean"] = mean_r
+
+
+
+# ======================
+# 4. Trainer com callbacks embutido
+# ======================
 CustomA2CTrainer = A2CTrainer.with_updates(
     name="CustomA2CTrainer",
     default_policy=None,
     get_policy_class=get_policy_class,
+    default_config={**A2C_DEFAULT_CONFIG, "callbacks": CustomCallbacks},
 )

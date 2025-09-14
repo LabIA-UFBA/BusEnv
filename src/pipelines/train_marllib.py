@@ -130,7 +130,7 @@ class RLlibSuntBus(MultiAgentEnv):
 ENV_REGISTRY["sunt_bus"] = RLlibSuntBus
 
 # ------------------------------
-# Environment Configuration Dictionary
+# Environment Configuration Dictionary 
 # ------------------------------
 env_config = {
     "map_name": "sunt_bus",

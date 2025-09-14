@@ -2,6 +2,8 @@
 import os
 import pickle
 import time
+import pprint
+from datetime import datetime
 import numpy as np
 from gym.spaces import Dict as GymDict
 
@@ -98,7 +100,12 @@ register_env("sunt_bus", lambda cfg: RLlibSuntBus(cfg))
 ModelCatalog.register_custom_model("BaseMLP", BaseMLP)
 
 
-# ------------------------------
+# create log directory
+run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+log_dir = os.path.join("exp_results", f"run_{run_id}")
+
+
+# ------------------------------ 
 # RLlib Training Config
 # ------------------------------
 trainer_config = {
@@ -107,8 +114,8 @@ trainer_config = {
     "num_workers": 0,
     "num_gpus": 0,
     "lr": 3e-4,
-    "train_batch_size": 20 * 1000,
-    "rollout_fragment_length": 1000,
+    "train_batch_size": 2000,
+    "rollout_fragment_length": 200,
     "use_critic": True,
     "use_gae": True,
     "vf_loss_coeff": 0.5,
@@ -127,21 +134,50 @@ trainer_config = {
         },
     },
     "logger_config": {
-        "type": "ray.tune.logger.TBXLogger",  # TensorBoard logger
-        "logdir": "./exp_results",            # onde salvar os arquivos
+        "type": "ray.tune.logger.TBXLogger",
+        "logdir": log_dir,   # subpasta única
     },
     "log_level": "INFO"
 }
 
 
 # ------------------------------
-# Run Training
+# Run Training with Debug Logs
 # ------------------------------
 if __name__ == "__main__":
     trainer = CustomA2CTrainer(config=trainer_config)
-    for i in range(10):  # 10 iterations só para testar
+
+    for i in range(100):  # menos iterações só para debug
         results = trainer.train()
-        print(f"Iter {i}: reward={results['episode_reward_mean']}")
-        if i % 5 == 0:
-            chkpt = trainer.save()
-            print(f"Checkpoint saved at {chkpt}")
+
+        print(f"\n=== Iteration {i} ===")
+        print(f"Episodes total: {results.get('episodes_total', 'NA')}")
+        print(f"Timesteps total: {results.get('timesteps_total', 'NA')}")
+        print(f"Agent steps total: {results.get('num_agent_steps_sampled', 'NA')}")
+
+        print(f"Mean reward: {results.get('episode_reward_mean', 'NA')}")
+        print(f"Min/Max reward: {results.get('episode_reward_min', 'NA')} / {results.get('episode_reward_max', 'NA')}")
+
+        # Verifica se houve update
+        info = results.get("info", {})
+        learner = info.get("learner", {})
+        if learner:
+            print("Learner info keys:", learner.keys())
+        else:
+            print("⚠️ Nenhuma atualização de gradiente aplicada nessa iteração.")
+
+        # Loss/grad info
+        learner_info = results.get("info", {}).get("learner", {}).get("default_policy", {})
+        learner_stats = learner_info.get("learner_stats", {})
+        if learner_info:
+            print(f"Policy loss: {learner_stats.get('policy_loss', 'NA')}")
+            print(f"Value loss: {learner_stats.get('vf_loss', 'NA')}")
+            print(f"Entropy: {learner_stats.get('policy_entropy', 'NA')}")
+        else:
+            print("No learner info found in results.")
+
+        #print("\n--- RESULTS KEYS ---")
+        #print(results.keys())
+        #print("\n--- INFO ---")
+        #pprint.pprint(results.get("info", {}))
+

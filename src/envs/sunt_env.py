@@ -240,7 +240,7 @@ class parallel_env(ParallelEnv):
             self.states[agent] = curr_node  # Ensures synchronization
 
             action = actions[agent]  # Action chosen by the agent
-            #print(f"[DEBUG] action: {action}")
+            print(f"[DEBUG] action: {action} for agent: {agent}")
 
             # ================= WAIT =================
             if action == 0:  
@@ -338,10 +338,10 @@ class parallel_env(ParallelEnv):
                         total_travel_time += edge_time
                         total_fuel_cost += edge_time / 300.0
 
-                    #print(f"[SERVICE_CENTER] Agent {agent} traveling path {path} "
-                     #   f"with total travel time={total_travel_time:.2f}, fuel cost={total_fuel_cost:.2f}")
+                    print(f"[SERVICE_CENTER] Agent {agent} traveling path {path} "
+                        f"with total travel time={total_travel_time:.2f}, fuel cost={total_fuel_cost:.2f}")
                 except nx.NetworkXNoPath:
-                    #print(f"[SERVICE_CENTER][ERROR] No path from {curr_node} to {sc_node}")
+                    print(f"[SERVICE_CENTER][ERROR] No path from {curr_node} to {sc_node}")
                     reward = -10.0
                     terminated = False
                     truncated = False
@@ -351,8 +351,8 @@ class parallel_env(ParallelEnv):
                         reward -= 0.5 * total_travel_time  
 
                     if state["fuel"] < total_fuel_cost:
-                        #print(f"[SERVICE_CENTER][FAIL] Agent {agent} insufficient fuel "
-                        #      f"({state['fuel']:.2f}) needs {total_fuel_cost:.2f}")
+                        print(f"[SERVICE_CENTER][FAIL] Agent {agent} insufficient fuel "
+                              f"({state['fuel']:.2f}) needs {total_fuel_cost:.2f}")
                         reward = -20.0
                     else:
                         self.agent_times[agent] += total_travel_time
@@ -383,19 +383,19 @@ class parallel_env(ParallelEnv):
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
             
             #print(f"[STEP] agent: {agent}")
-            #print(f"[STEP] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
-            #print(f"[STEP]  self.current_time : {self.current_time}") 
-            #print(f"[STEP]  self.current_time / (24 * 60 * 60): {self.current_time / (24 * 60 * 60)}")
-            #print(f"[STEP]  normalized_travel_time: {normalized_travel_time}")
-            #print(f"[STEP]  self.occupancy_rate.get(curr_node, 0.0): {self.occupancy_rate.get(int(curr_node), 0.0)}")
-            #print(f"[STEP]  state['occupancy']: {state['occupancy']}")
-            #print(f"[STEP]  state['uptime']: {state['uptime']}")
-            #print(f"[STEP]  state['fuel']: {state['fuel']}")
-            #print(f"[STEP]  curr_node: {curr_node}")
-            #print(f"[STEP]  next_node: {next_node}")
-            #print(f"[STEP]  travel_time: {travel_time}")
-            #print(f"[STEP]  self.node_to_idx[str(curr_node)]: {self.node_to_idx[str(curr_node)]}")
-            #print(f"[STEP]  self.node_to_idx[str(next_node)]: {self.node_to_idx[str(next_node)]}")
+            print(f"[STEP] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
+            print(f"[STEP]  self.agent_times[agent] : {self.agent_times[agent]}") 
+            print(f"[STEP]  self.agent_times[agent] / (24 * 60 * 60): {self.agent_times[agent] / (24 * 60 * 60)}")
+            print(f"[STEP]  normalized_travel_time: {normalized_travel_time}")
+            print(f"[STEP]  self.occupancy_rate.get(curr_node, 0.0): {self.occupancy_rate.get(int(curr_node), 0.0)}")
+            print(f"[STEP]  state['occupancy']: {state['occupancy']}")
+            print(f"[STEP]  state['uptime']: {state['uptime']}")
+            print(f"[STEP]  state['fuel']: {state['fuel']}")
+            print(f"[STEP]  curr_node: {curr_node}")
+            print(f"[STEP]  next_node: {next_node}")
+            print(f"[STEP]  travel_time: {travel_time}")
+            print(f"[STEP]  self.node_to_idx[str(curr_node)]: {self.node_to_idx[str(curr_node)]}")
+            print(f"[STEP]  self.node_to_idx[str(next_node)]: {self.node_to_idx[str(next_node)]}")
 
             # 1. Crie o array de observação como antes
             obs_array = np.array([
@@ -579,6 +579,12 @@ class DefaultReward(RewardBaseClass):
             reward += self.reward_weights["energy_efficiency"] * travel_efficiency
         else:
             reward += 0.0  # No bonus if there is no expected time
+
+        print(f"[REWARD] action: {action}, occ_penalty: {-self.reward_weights['occ_penalty'] * occ_penalty:.2f}, "
+              f"uptime_bonus: {self.reward_weights['uptime_bonus'] * uptime:.2f}, "
+              f"sync_score: {self.reward_weights['sync_score'] * sync_score:.2f}, "
+              f"energy_efficiency: {self.reward_weights['energy_efficiency'] * travel_efficiency:.2f} "
+              f"=> total reward: {reward:.2f}")
 
         return reward
 
