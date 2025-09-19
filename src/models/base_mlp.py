@@ -39,14 +39,14 @@ class BaseMLP(TorchModelV2, nn.Module):
         self.p_encoder = BaseEncoder(model_config, self.full_obs_space)
         self.vf_encoder = BaseEncoder(model_config, self.full_obs_space)
 
-        self.p_branch = SlimFC(
+        self.p_branch = SlimFC( # Actor logits das ações
             in_size=self.p_encoder.output_dim,
             out_size=num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
 
         # self.vf_encoder = nn.Sequential(*copy.deepcopy(layers))
-        self.vf_branch = SlimFC(
+        self.vf_branch = SlimFC( # Critic valor escalar
             in_size=self.vf_encoder.output_dim,
             out_size=1,
             initializer=normc_initializer(0.01),
@@ -59,9 +59,9 @@ class BaseMLP(TorchModelV2, nn.Module):
 
         self.q_flag = False
 
-        self.actors = [self.p_encoder, self.p_branch]
-        self.critics = [self.vf_encoder, self.vf_branch]
-        self.actor_initialized_parameters = self.actor_parameters()
+        self.actors = [self.p_encoder, self.p_branch] # separa os parâmetros do ator e do crítico
+        self.critics = [self.vf_encoder, self.vf_branch] # para otimização separada se necessário 
+        self.actor_initialized_parameters = self.actor_parameters() # parâmetros do ator
 
     @override(TorchModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
@@ -85,7 +85,7 @@ class BaseMLP(TorchModelV2, nn.Module):
         if self.custom_config["mask_flag"]:
             output = output + inf_mask
 
-        return output, state
+        return output, state # logits para escolher açõe
 
     @override(TorchModelV2)
     def value_function(self) -> TensorType:
@@ -94,7 +94,7 @@ class BaseMLP(TorchModelV2, nn.Module):
         x = self.vf_encoder(self.inputs)
 
         if self.q_flag:
-            return torch.reshape(self.vf_branch(x), [B, -1])
+            return torch.reshape(self.vf_branch(x), [B, -1]) # valor escalar do estado
         else:
             return torch.reshape(self.vf_branch(x), [-1])
 

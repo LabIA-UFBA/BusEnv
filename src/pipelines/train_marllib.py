@@ -157,7 +157,7 @@ model = marl.build_model(env_tuple, algo, model_config)
 # ------------------------------
 run_config = {
     "local_mode": False,
-    "stop": {"episodes_total": 10000},
+    "stop": {"episodes_total": 1000000},
     "checkpoint_freq": 200,
     "num_gpus": 0,
     "num_workers": 2,

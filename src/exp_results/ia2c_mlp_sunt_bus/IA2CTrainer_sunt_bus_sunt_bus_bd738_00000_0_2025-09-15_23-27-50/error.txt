@@ -1,0 +1,31 @@
+Failure # 1 (occurred at 2025-09-15_23-27-56)
+Traceback (most recent call last):
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/trial_runner.py", line 890, in _process_trial
+    results = self.trial_executor.fetch_result(trial)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/ray_trial_executor.py", line 788, in fetch_result
+    result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/_private/client_mode_hook.py", line 105, in wrapper
+    return func(*args, **kwargs)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/worker.py", line 1627, in get
+    raise value
+ray.exceptions.RayActorError: The actor died because of an error raised in its creation task, [36mray::IA2CTrainer.__init__()[39m (pid=61374, ip=192.168.2.101)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer_template.py", line 137, in __init__
+    Trainer.__init__(self, config, env, logger_creator)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer.py", line 623, in __init__
+    super().__init__(config, logger_creator)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/trainable.py", line 107, in __init__
+    self.setup(copy.deepcopy(self.config))
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer_template.py", line 147, in setup
+    super().setup(config)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/rllib/agents/trainer.py", line 716, in setup
+    self.env_creator = _global_registry.get(ENV_CREATOR, env)
+  File "/media/wesley/Disco_local/miniconda3/envs/marllib/lib/python3.8/site-packages/ray/tune/registry.py", line 168, in get
+    return pickle.loads(value)
+  File "/media/wesley/Disco_local/new/graph-exploration/src/pipelines/train_marllib.py", line 180, in <module>
+    algo.fit(
+  File "/media/wesley/Disco_local/new/graph-exploration/MARLlib/marllib/marl/__init__.py", line 312, in fit
+    return run_il(self.config_dict, env_instance, model_class, stop=stop)
+  File "/media/wesley/Disco_local/new/graph-exploration/MARLlib/marllib/marl/algos/run_il.py", line 37, in run_il
+    ray.init(local_mode=exp_info["local_mode"], num_gpus=exp_info["num_gpus"])
+RuntimeError: Maybe you called ray.init twice by accident? This error can be suppressed by passing in 'ignore_reinit_error=True' or by calling 'ray.shutdown()' prior to 'ray.init()'.
+
