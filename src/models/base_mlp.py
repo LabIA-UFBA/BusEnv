@@ -13,7 +13,7 @@ from marllib.marl.models.zoo.encoder.base_encoder import BaseEncoder
 torch, nn = try_import_torch()
 
 
-class BaseMLP(TorchModelV2, nn.Module):
+class BaseMLPCustom(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
     def __init__(
@@ -28,6 +28,8 @@ class BaseMLP(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
+
+        print(f"✅ BaseMLPCustom initialized: {name}")
 
         # decide the model arch
         self.custom_config = model_config["custom_model_config"]
@@ -85,6 +87,7 @@ class BaseMLP(TorchModelV2, nn.Module):
         if self.custom_config["mask_flag"]:
             output = output + inf_mask
 
+        #print(f"➡️ Forward called, batch size: {output.shape[0]}")
         return output, state # logits para escolher açõe
 
     @override(TorchModelV2)
@@ -92,6 +95,9 @@ class BaseMLP(TorchModelV2, nn.Module):
         assert self._features is not None, "must call forward() first"
         B = self._features.shape[0]
         x = self.vf_encoder(self.inputs)
+
+        #print(f"🔹 Value function called, batch size: {B}")
+
 
         if self.q_flag:
             return torch.reshape(self.vf_branch(x), [B, -1]) # valor escalar do estado
