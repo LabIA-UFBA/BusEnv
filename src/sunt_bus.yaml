@@ -1,0 +1,22 @@
+# Configuration for MARLlib custom environment: sunt_bus
+env: sunt_bus  # nome do ambiente
+
+env_args:
+  network_path: "viz/graph_gtfs_fev_2024.gpickle"
+  obs_dir: "training_observation"
+  actions_amount: 3
+  max_steps: 1000000
+  num_agents: 3
+  # se quiser, pode adicionar os nomes dos arquivos individuais
+  avg_travel_time_AB_file: "avg_travel_time_AB.pkl"
+  future_demand_at_B_file: "future_demand_at_B.pkl"
+  occupancy_rate_file: "occupancy_rate.pkl"
+  uptime_normalized_file: "uptime_normalized.pkl"
+  real_routes_file: "real_routes.pkl"
+  route_metadata_file: "route_metadata.pkl"
+
+mask_flag: False             # depende do seu ambiente, PettingZoo geralmente não usa masking
+global_state_flag: False     # se não há estado global separado, deixe False
+opp_action_in_cc: False      # se não há ação do oponente nos controles do agente
+fixed_batch_timesteps: 1000  # tamanho de batch, ajusta conforme seu caso
+agent_level_batch_update: False

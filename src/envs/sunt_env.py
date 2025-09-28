@@ -7,6 +7,8 @@ import random
 import pickle
 import gym.utils.seeding  # import seeding
 from gym.spaces import Discrete
+import csv
+import os
 
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
@@ -116,6 +118,13 @@ class parallel_env(ParallelEnv):
         self.route_metadata = route_metadata or {}
         self.agent_routes = {}
 
+        self.metrics_file = "env_metrics.csv" # To log metrics for analysis
+
+        if not os.path.exists(self.metrics_file): # Create the metrics file if it doesn't exist
+            with open(self.metrics_file, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["episode", "env_steps", "mean_reward", "total_reward", "fairness"])
+
 
     @property
     def num_agents(self):
@@ -207,6 +216,12 @@ class parallel_env(ParallelEnv):
             }
 
         #print(f"[RESET] Environment reset. Agents: {self.agents}")
+
+        self.current_episode_metrics = {  # Metrics for the current episode
+            "rewards": {agent: 0.0 for agent in self.agents},
+            "steps": {agent: 0 for agent in self.agents},
+            "done": False
+        }
 
         # return only observations
         return observations
@@ -434,9 +449,61 @@ class parallel_env(ParallelEnv):
 
         self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])]
 
+        # Update current episode metrics
+        total_reward = sum(rewards.values())
+        mean_reward = np.mean(list(rewards.values()))
+
+        # Fairness (Gini coefficient sobre recompensas)
+        def gini(x):
+            if np.amin(x) < 0:
+                x = np.array(x) - np.amin(x)  # shift values to be non-negative
+            x = np.sort(np.array(x))
+            n = len(x)
+            if n == 0:
+                return 0.0
+            index = np.arange(1, n + 1)
+            return (np.sum((2 * index - n - 1) * x)) / (n * np.sum(x) + 1e-8)
+
+        fairness = 1 - gini(list(rewards.values())) if rewards else 0.0
+
+        if not hasattr(self, "metrics_history"):  # Initialize metrics history if not present
+            self.metrics_history = []
+        
+        self.metrics_history.append({
+            "step": sum(self.steps.values()),  # Total steps taken by all agents
+            "total_reward": total_reward,
+            "mean_reward": mean_reward,
+            "fairness": fairness
+        })
+
+        # === save metrics on CSV ===
+        if not hasattr(self, "episode_counter"):
+            self.episode_counter = 0
+        self.episode_counter += 1
+
+        env_steps = sum(self.steps.values())
+        with open(self.metrics_file, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                self.episode_counter,
+                env_steps,
+                mean_reward,
+                total_reward,
+                fairness
+            ])
+
+
         # fusing terminations + truncations → dones
         dones = {a: (terminations[a] or truncations[a]) for a in rewards}
         dones["__all__"] = all(dones.values())
+
+        for agent in self.agents: # Add episode reward and fairness to infos
+            infos[agent] = {
+                **infos.get(agent, {}),
+                "episode_reward": rewards[agent],
+                "mean_reward_episode": mean_reward,
+                "fairness": fairness
+            }
 
         return observations, rewards, dones, infos
 

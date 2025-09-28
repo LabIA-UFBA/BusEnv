@@ -1,9 +1,9 @@
 import argparse
 import runpy
 import sys
-import os
+from typing import List  # <- Import necessário para Python 3.8
 
-def _run_module(mod_path: str, args: list[str]) -> int:
+def _run_module(mod_path: str, args: List[str]) -> int:
     """
     Run the module as __main__ passing the arguments.
     """
@@ -15,15 +15,19 @@ def _run_module(mod_path: str, args: list[str]) -> int:
         return int(e.code) if isinstance(e.code, int) else 1
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="graphx", description="Graph Exploration CLI")
+    p = argparse.ArgumentParser(prog="marllib", description="Graph Exploration CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     # Each command captures additional arguments after '--'
-    sub.add_parser("env-sunt", help="Run the entrypoint of the SUNT environment (if available)") \
+    sub.add_parser("env-sunt", help="Run the entrypoint of the SUNT environment") \
         .add_argument("args", nargs=argparse.REMAINDER)
-    sub.add_parser("train", help="Train RLlib") \
+    sub.add_parser("train", help="Train with RLlib") \
         .add_argument("args", nargs=argparse.REMAINDER)
-    sub.add_parser("stats", help="Calculate statistics/averages") \
+    sub.add_parser("train-marllib-a2c", help="Train with MARLlib A2C (default)") \
+        .add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("train-custom-a2c", help="Train with MARLlib custom A2C") \
+        .add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("stats", help="Calculate dataset statistics/averages") \
         .add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("look-amount", help="Tool lookAmount") \
         .add_argument("args", nargs=argparse.REMAINDER)
@@ -37,6 +41,8 @@ def main(argv=None):
         .add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("view-especific-node", help="Tool viewEspecificNode") \
         .add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("view-metrics", help="Visualize training metrics") \
+        .add_argument("args", nargs=argparse.REMAINDER)
 
     args = p.parse_args(argv)
 
@@ -44,6 +50,8 @@ def main(argv=None):
     modmap = {
         "env-sunt": "src.envs.sunt_env",
         "train": "src.pipelines.train_rllib",
+        "train-marllib-a2c": "src.pipelines.train_marllib_a2c",
+        "train-custom-a2c": "src.pipelines.train_custom_a2c",
         "stats": "src.pipelines.show_dataset_stats",
         "look-amount": "src.tools.look_amount",
         "pkl-medias": "src.tools.pkl_medias",
@@ -51,12 +59,14 @@ def main(argv=None):
         "view-pkl": "src.tools.view_pkl",
         "view-graph": "src.viz.view_graph",
         "view-especific-node": "src.tools.view_especific_nodePkl",
+        "view-metrics": "src.tools.view_metrics",
     }
 
     mod = modmap[args.cmd]
     passthrough = getattr(args, "args", []) or []
 
-    # Roda o módulo com os argumentos pass-through
+    # Run the mapped module with passthrough args
     return _run_module(mod, passthrough)
 
-app = main
+def app():
+    return main()

@@ -68,6 +68,7 @@ This ensures agents balance **service quality, fleet efficiency, and sustainabil
 
 The environment integrates:
 
+- **MARLlib** → Framework for MARL built on Ray RLlib.
 - **Ray RLlib** → Distributed reinforcement learning.  
 - **PettingZoo** → Multi-agent environment API.  
 - **SuperSuit** → Wrappers for preprocessing.  
@@ -118,61 +119,96 @@ exec "$SHELL"
 
 
 ```bash
-# 1. Create a conda environment
-conda create -n graphx python=3.12.3
-conda activate graphx
 
-# 2. Upgrade basic tools
-pip install --upgrade pip setuptools wheel
+## 1. create conda enviroment
+conda create -n marllib python=3.8 -y
+conda activate marllib
 
-# 3. Install dependencies in editable mode (with extras)
+## 2. Adjust tools for MARLlib
+pip install "pip==21" "setuptools==65.5.0" "wheel==0.38.0"
+pip install "gym==0.20.0"
+
+## 3. Clone MARLlib
+git clone https://github.com/Replicable-MARL/MARLlib.git
+cd MARLlib
+
+## 4. Install MARLlib dependencies
+pip install -r requirements.txt
+
+## 5. Apply patches
+cd marllib/patch
+python add_patch.py -y
+cd ../..
+
+## 6. install MARLlib
+pip install marllib
+export PYTHONPATH=$(pwd):$PYTHONPATH
+cd ..
+
+## 7. Install your project in editable mode with extras
 pip install -e ".[rllib,data,viz,test]"
 
-# 4. Export PYTHONPATH
-# Linux / macOS
+## 8. Fix protobuf version for Ray/RLlib
+pip install "protobuf>=3.19.0,<3.21.0"
+
+## 9. adjust PYTHONPATH
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-# Windows (PowerShell)
-$env:PYTHONPATH = (Get-Location).Path + ";" + $env:PYTHONPATH
-
-# 5. Unzip the real route data (required for training)
+## 10. Unpack route data
 unzip src/training_observation/real_routes.zip -d src/training_observation/
 
-# 6. Run tests
+## 11. Run tests
 pytest -q
+
+## 12. Place the configuration folder 
+Place the sunt_bus.yaml file that is inside the src folder inside the config folder in the path "/MARLlib/marllib/envs/base_env/config"
+
+## 13. [Extra] Run Custom 
+If you need to run the custom environment, go to the a2c.py file in the path "/MARLlib/marllib/marl/algos/core/IL" and make the following changes within this file:
+1 - Add the import "from models.custom_a3c_torch_policy import CustomA3CTorchPolicy"
+2 - Where it says "IA2CTorchPolicy = A3CTorchPolicy.with_updates" replace it with "IA2CTorchPolicy = CustomA3CTorchPolicy.with_updates"
 
 ```
 
 ### CLI (`graphx`)
 
 ```bash
-# RLlib training (reinforcement learning experiments)
-graphx train -- --help
+# Train with MARLlib A2C (default)
+marllib train-marllib-a2c -- --help
+
+# Train with MARLlib custom A2C
+marllib train-custom-a2c -- --help
+
+# Train with RLlib
+marllib train -- --help
 
 # Dataset statistics (mean, std, etc.)
-graphx stats -- --help
+marllib stats -- --help
 
 # Dataset size and item counts
-graphx look-amount -- --help
+marllib look-amount -- --help
 
 # Compute averages across PKL files
-graphx pkl-medias -- --help
+marllib pkl-medias -- --help
 
 # Explore and analyze route files
-graphx see-routes -- --help
+marllib see-routes -- --help
 
 # View the content of PKL files interactively
-graphx view-pkl -- --help
+marllib view-pkl -- --help
 
 # Visualize graphs
-graphx view-graph -- --help
+marllib view-graph -- --help
 
-# Visualize a Especific Node Information
-graphx view-especific-node -- --help
+# Visualize a specific node information
+marllib view-especific-node -- --help
+
+# Visualize training metrics
+marllib view-metrics -- --help
 
 # Run the SUNT environment entrypoint
-graphx env-sunt --
-```
+marllib env-sunt --
+
 
 ---
 

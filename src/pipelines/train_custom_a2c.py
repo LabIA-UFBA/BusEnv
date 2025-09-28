@@ -12,7 +12,7 @@ from envs.sunt_env import parallel_env
 from supersuit import pad_observations_v0, pad_action_space_v0
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-# Import do modelo externo BaseMLP
+# Import custom BaseMLP
 from models.base_mlp import BaseMLPCustom
 
 # ------------------------------
@@ -151,7 +151,7 @@ model = (BaseMLPCustom, model_config)
 # ------------------------------
 run_config = {
     "local_mode": False,
-    "stop": {"episodes_total": 1000000},
+    "stop": {"episodes_total": 1000},
     "checkpoint_freq": 200,
     "num_gpus": 0,
     "num_workers": 2,

@@ -10,6 +10,7 @@ build/
 sunt/
 SUNT/
 MARLlib/
+exp_results/
 tensorboard_graph_exploration/
 logs.txt
 q45833547-46022171-0.9-0.9-0.01.pkl
