@@ -119,52 +119,59 @@ exec "$SHELL"
 
 
 ```bash
-
-## 1. create conda enviroment
+## 1) Criar e ativar o ambiente
 conda create -n marllib python=3.8 -y
 conda activate marllib
 
-## 2. Adjust tools for MARLlib
-pip install "pip==21" "setuptools==65.5.0" "wheel==0.38.0"
-pip install "gym==0.20.0"
+## 2) Confirmar que estamos usando o Python/Pip do ambiente
+which python
+python --version
+python -m pip --version
 
-## 3. Clone MARLlib
+## 3) Ajustar as ferramentas no env marllib (usa o pip do próprio env)
+python -m pip install --upgrade "pip==21.0" "setuptools==65.5.0" "wheel==0.38.0"
+
+## 4) Gym compatível (API antiga)
+python -m pip install "gym==0.20.0"
+
+## 5. Clone MARLlib
 git clone https://github.com/Replicable-MARL/MARLlib.git
 cd MARLlib
 
-## 4. Install MARLlib dependencies
-pip install -r requirements.txt
+## 6. Install MARLlib dependencies
+python -m pip install -r requirements.txt
 
-## 5. Apply patches
+## 7. Apply patches
 cd marllib/patch
 python add_patch.py -y
 cd ../..
 
-## 6. install MARLlib
-pip install marllib
+## 8. install MARLlib
+python -m pip install marllib
 export PYTHONPATH=$(pwd):$PYTHONPATH
 cd ..
 
-## 7. Install your project in editable mode with extras
-pip install -e ".[rllib,data,viz,test]"
+## 9. Install your project in editable mode with extras
+python -m pip install -e ".[rllib,data,viz,test]"
 
-## 8. Fix protobuf version for Ray/RLlib
-pip install "protobuf>=3.19.0,<3.21.0"
+## 10. Fix protobuf version for Ray/RLlib
+python -m pip install "protobuf>=3.19.0,<3.21.0"
 
-## 9. adjust PYTHONPATH
+## 11. adjust PYTHONPATH
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-## 10. Unpack route data
+## 12. Unpack route data
 unzip src/training_observation/real_routes.zip -d src/training_observation/
 
-## 11. Run tests
+## 13. Run tests
 pytest -q
 
-## 12. Place the configuration folder 
-Place the sunt_bus.yaml file that is inside the src folder inside the config folder in the path "/MARLlib/marllib/envs/base_env/config"
+## 14. Place the configuration folder
+mv src/sunt_bus.yaml MARLlib/marllib/envs/base_env/config/
 
-## 13. [Extra] Run Custom 
-If you need to run the custom environment, go to the a2c.py file in the path "/MARLlib/marllib/marl/algos/core/IL" and make the following changes within this file:
+
+## 15. [Extra] Run Custom 
+If you need to run the custom model, go to the a2c.py file in the path "/MARLlib/marllib/marl/algos/core/IL" and make the following changes within this file:
 1 - Add the import "from models.custom_a3c_torch_policy import CustomA3CTorchPolicy"
 2 - Where it says "IA2CTorchPolicy = A3CTorchPolicy.with_updates" replace it with "IA2CTorchPolicy = CustomA3CTorchPolicy.with_updates"
 
