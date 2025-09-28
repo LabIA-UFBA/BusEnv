@@ -1,160 +1,207 @@
+# src/pipelines/train_rllib.py
+
 import os
+import argparse
+import pickle
+
+# (opcional) silenciar alguns avisos de migração
+os.environ.setdefault("RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS", "0")
+
 import ray
 from ray import tune
 from ray.tune.registry import register_env
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.impala import IMPALAConfig  # Import IMPALA algorithm configuration
-from ray.train import RunConfig  
-from ray.tune import TuneConfig
-from ray.tune.tuner import Tuner
-from pettingzoo.utils import parallel_to_aec
+
+# === RLlib (API antiga do Ray 1.x) ===
+from ray.rllib.agents.ppo import PPOTrainer as PPOTrainer
+from ray.rllib.agents.impala import ImpalaTrainer as ImpalaTrainer
+
+# === PettingZoo / SuperSuit (sem parallel_to_aec) ===
 from supersuit import pad_observations_v0, pad_action_space_v0
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv 
-from ray.tune.logger import TBXLoggerCallback
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 
-# Suppress Ray v2 migration warnings
-os.environ["RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"] = "0"
 
-# --- Environment creation and registration ---
+# --------------------------------------------------------------------------------------
+# Ambiente
+# --------------------------------------------------------------------------------------
 def env_creator(config):
-    import pickle
-    from src.envs.sunt_env import parallel_env  # Import the custom parallel environment
+    """Cria o ambiente paralelo do PettingZoo e aplica wrappers + wrapper do RLlib."""
+    from src.envs.sunt_env import parallel_env  # import local para evitar custo no --help
 
-    BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # Base directory of the project
+    # Base do projeto (um nível acima deste arquivo)
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
-    # === Load the network graph ===
+    # === Carrega o grafo ===
     with open(os.path.join(BASE_DIR, "viz", "graph_gtfs_fev_2024.gpickle"), "rb") as f:
         G = pickle.load(f)
 
-    # === Load precomputed observation data ===
+    # === Observações pré-computadas ===
     obs_dir = os.path.join(BASE_DIR, "training_observation")
 
     with open(os.path.join(obs_dir, "avg_travel_time_AB.pkl"), "rb") as f:
         avg_travel_time_AB = pickle.load(f)
-
     with open(os.path.join(obs_dir, "future_demand_at_B.pkl"), "rb") as f:
         future_demand_at_B = pickle.load(f)
-
     with open(os.path.join(obs_dir, "occupancy_rate.pkl"), "rb") as f:
         occupancy_rate = pickle.load(f)
-
     with open(os.path.join(obs_dir, "uptime_normalized.pkl"), "rb") as f:
         uptime_normalized = pickle.load(f)
 
-    # === Load real routes and metadata ===
+    # === Rotas reais e metadados ===
     with open(os.path.join(obs_dir, "real_routes.pkl"), "rb") as f:
         real_routes = pickle.load(f)
-
     with open(os.path.join(obs_dir, "route_metadata.pkl"), "rb") as f:
         route_metadata = pickle.load(f)
 
-    # === Create the parallel PettingZoo environment ===
+    # === Cria env paralelo PettingZoo ===
     env = parallel_env(
         network=G,
-        actions_amount=3,
-        max_steps=1000000,
-        num_agents=5,
+        actions_amount=config.get("actions_amount", 3),
+        max_steps=config.get("max_steps", 1_000_000),
+        num_agents=config.get("num_agents", 5),
         avg_travel_time_AB=avg_travel_time_AB,
         future_demand_at_B=future_demand_at_B,
         occupancy_rate=occupancy_rate,
         uptime_normalized=uptime_normalized,
         real_routes=real_routes,
-        route_metadata=route_metadata
+        route_metadata=route_metadata,
     )
 
-    # === Apply observation and action space padding wrappers ===
-    env = pad_observations_v0(env)  # Pad observation spaces to have uniform shape
-    env = pad_action_space_v0(env)  # Pad action spaces to have uniform size
-    env = ParallelPettingZooEnv(env)  # Wrap environment for RLlib multi-agent support
+    # === Wrappers ===
+    env = pad_observations_v0(env)
+    env = pad_action_space_v0(env)
+    env = ParallelPettingZooEnv(env)  # wrapper do RLlib p/ multiagente
 
     return env
 
-# Register the custom environment with Ray RLlib
-register_env("sunt_env", lambda config: env_creator(config))
 
-# --- Initialize Ray ---
-try:
-    ray.init(ignore_reinit_error=True)  # Try GPU first, if available
-    print("✅ Ray initialized with GPU (if available).")
-except Exception as e:
-    print(f"⚠️ Ray GPU init failed ({e}). Falling back to CPU.")
-    ray.init(ignore_reinit_error=True, num_gpus=0)
-    print("✅ Ray initialized in CPU-only mode.")
+# registra o ambiente no RLlib
+register_env("sunt_env", lambda cfg: env_creator(cfg or {}))
 
-# --- Environment setup for multi-agent configuration ---
-env = env_creator({})
-agents = env.par_env.possible_agents  # Get the list of agent IDs
-obs_space = env.observation_space[agents[0]]  # Observation space of a single agent
-act_space = env.action_space[agents[0]]       # Action space of a single agent
 
-# --- Select algorithm ---
-ALGO = "PPO"  # Options: "PPO", "IMPALA"
+# --------------------------------------------------------------------------------------
+# Args (para o "--help" funcionar no seu CLI)
+# --------------------------------------------------------------------------------------
+def parse_args():
+    p = argparse.ArgumentParser(description="Treino RLlib (Ray 1.x) com PettingZoo.")
+    p.add_argument("--algo", choices=["PPO", "IMPALA"], default="PPO", help="Algoritmo a usar")
+    p.add_argument("--stop-iters", type=int, default=5, help="Parar após N iterações de treino")
+    p.add_argument("--num-workers", type=int, default=1, help="Workers de rollout (num_workers)")
+    p.add_argument("--num-gpus", type=int, default=0, help="GPUs por trial (num_gpus)")
+    p.add_argument("--local-dir", default="./results", help="Diretório de resultados do Tune")
+    p.add_argument("--exp-name", default=None, help="Nome do experimento (opcional)")
+    p.add_argument("--train-batch-size", type=int, default=4000, help="train_batch_size (PPO)")
+    p.add_argument("--gamma", type=float, default=0.99, help="fator de desconto")
+    # parâmetros do ambiente
+    p.add_argument("--actions-amount", type=int, default=3)
+    p.add_argument("--max-steps", type=int, default=1_000_000)
+    p.add_argument("--num-agents", type=int, default=5)
+    return p.parse_args()
 
-# --- Define shared policy for all agents ---
-policies = {
-    "shared_policy": (None, obs_space, act_space, {})  # None -> default policy class
-}
-policy_mapping_fn = lambda agent_id, *args, **kwargs: "shared_policy"  # Map all agents to shared policy
 
-# --- Algorithm-specific configuration ---
-if ALGO == "PPO":
-    config = (
-        PPOConfig()
-        .environment(env="sunt_env")  # Set environment
-        .framework("torch")          # Use PyTorch backend
-        .env_runners(num_env_runners=1)  # Number of environment runners
-        .training(train_batch_size=4000, gamma=0.99)  # Training batch size & discount factor
-        .resources(num_gpus=0)       # GPU resources
-        .multi_agent(
-            policies=policies,
-            policy_mapping_fn=policy_mapping_fn
-        )
+# --------------------------------------------------------------------------------------
+# Treino
+# --------------------------------------------------------------------------------------
+def main():
+    args = parse_args()
+
+    # Inicializa Ray
+    try:
+        ray.init(ignore_reinit_error=True)
+        print("✅ Ray inicializado.")
+    except Exception as e:
+        print(f"⚠️ Ray init falhou ({e}). Tentando CPU-only.")
+        ray.init(ignore_reinit_error=True, num_gpus=0)
+
+    # Instancia um env para descobrir spaces (ParallelPettingZooEnv fornece spaces comuns)
+    tmp_env = env_creator({
+        "actions_amount": args.actions_amount,
+        "max_steps": args.max_steps,
+        "num_agents": args.num_agents,
+    })
+    obs_space = tmp_env.observation_space
+    act_space = tmp_env.action_space
+    # (opcional) fechar o env temporário se houver método close
+    if hasattr(tmp_env, "close"):
+        try:
+            tmp_env.close()
+        except Exception:
+            pass
+
+    # Política compartilhada
+    policies = {
+        "shared_policy": (None, obs_space, act_space, {})
+    }
+    policy_mapping_fn = lambda agent_id, *_, **__: "shared_policy"
+
+    # Config comum
+    base_config = {
+        "env": "sunt_env",
+        "framework": "torch",
+        "num_gpus": args.num_gpus,
+        "num_workers": args.num_workers,
+        "gamma": args.gamma,
+        "multiagent": {
+            "policies": policies,
+            "policy_mapping_fn": policy_mapping_fn,
+        },
+        # repassar configurações do env
+        "env_config": {
+            "actions_amount": args.actions_amount,
+            "max_steps": args.max_steps,
+            "num_agents": args.num_agents,
+        },
+    }
+
+    # Algoritmo específico
+    if args.algo == "PPO":
+        trainer_cls = PPOTrainer
+        algo_name = "PPO"
+        exp_name = args.exp_name or "ppo_sunt_experiment"
+        algo_config = {
+            "train_batch_size": args.train_batch_size,
+        }
+    else:
+        trainer_cls = ImpalaTrainer
+        algo_name = "IMPALA"
+        exp_name = args.exp_name or "impala_sunt_experiment"
+        algo_config = {
+            "lr": 5e-4,
+            "train_batch_size": 512,
+        }
+
+    config = {**base_config, **algo_config}
+
+    # Logger compatível (callbacks novos vs. loggers antigos)
+    logger_kwargs = {}
+    try:
+        # Ray com Callback
+        from ray.tune.logger import TBXLoggerCallback
+        logger_kwargs["callbacks"] = [TBXLoggerCallback()]
+    except Exception:
+        # Ray 1.x clássico
+        try:
+            from ray.tune.logger import TBXLogger
+            logger_kwargs["loggers"] = [TBXLogger]
+        except Exception:
+            # sem TensorBoardX disponível – segue sem logger extra
+            pass
+
+    # Executa treino
+    results = tune.run(
+        run_or_experiment=trainer_cls,
+        name=exp_name,
+        stop={"training_iteration": args.stop_iters},
+        config=config,
+        local_dir=os.path.abspath(args.local_dir),
+        checkpoint_at_end=True,
+        checkpoint_freq=2,
+        verbose=3,
+        **logger_kwargs,
     )
-    algo_name = "PPO"
-    exp_name = "ppo_sunt_experiment"
 
-elif ALGO == "IMPALA":
-    config = (
-        IMPALAConfig()
-        .environment(env="sunt_env")
-        .framework("torch")
-        .env_runners(num_env_runners=2)  # IMPALA benefits from more workers
-        .resources(num_gpus=0)
-        .training(
-            gamma=0.99,
-            lr=0.0005,           # Learning rate
-            train_batch_size=512, # IMPALA uses smaller batches
-            num_sgd_iter=1,       # Number of SGD iterations per batch
-        )
-        .multi_agent(
-            policies=policies,
-            policy_mapping_fn=policy_mapping_fn
-        )
-    )
-    algo_name = "IMPALA"
-    exp_name = "impala_sunt_experiment"
+    print(f"✅ Training completed with {algo_name}!")
+    return results
 
-else:
-    raise ValueError(f"Unsupported algorithm: {ALGO}")
 
-# --- Setup Ray Tune Tuner ---
-tuner = Tuner(
-    algo_name,
-    run_config=RunConfig(
-        stop={"training_iteration": 5},  # Stop after 80 training iterations
-        storage_path=os.path.abspath("./results"),  # Directory to store results
-        name=exp_name,  # Experiment name
-        checkpoint_config=ray.train.CheckpointConfig(
-            checkpoint_at_end=True,          # Save checkpoint at the end
-            checkpoint_frequency=2           # Save every 2 iterations
-        ),
-        verbose=3,                           # Logging verbosity
-        callbacks=[TBXLoggerCallback()]      # TensorBoard logging callback
-    ),
-    tune_config=TuneConfig(),
-    param_space=config.to_dict()  # Convert RLlib config to param_space for Tuner
-)
-
-# --- Start training ---
-results = tuner.fit()
-print(f"Training completed with {ALGO}!")
+if __name__ == "__main__":
+    main()

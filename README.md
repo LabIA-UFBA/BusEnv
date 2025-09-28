@@ -187,7 +187,7 @@ marllib train-marllib-a2c -- --help
 marllib train-custom-a2c -- --help
 
 # Train with RLlib
-marllib train -- --help
+marllib train
 
 # Dataset statistics (mean, std, etc.)
 marllib stats -- --help
