@@ -156,6 +156,7 @@ python -m pip install -e ".[rllib,data,viz,test]"
 
 ## 10. Fix protobuf version for Ray/RLlib
 python -m pip install "protobuf>=3.19.0,<3.21.0"
+pip install "pydantic==1.10.12"
 
 ## 11. adjust PYTHONPATH
 export PYTHONPATH=$(pwd):$PYTHONPATH
