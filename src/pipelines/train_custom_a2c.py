@@ -151,7 +151,7 @@ model = (BaseMLPCustom, model_config)
 # ------------------------------
 run_config = {
     "local_mode": False,
-    "stop": {"episodes_total": 1000},
+    "stop": {"timesteps_total": 1000000},
     "checkpoint_freq": 200,
     "num_gpus": 0,
     "num_workers": 2,
@@ -159,8 +159,13 @@ run_config = {
 }
 
 custom_config = {
-    "lr": 0.0003,
-    "batch_episode": 20,
+    "lr": 0.0003,          # lr_1
+    "batch_episode": 20,    # batch_size
+    "gamma": 0.99,          # discount
+    "vf_loss_coeff": 1.0,   # weight do critic
+    "entropy_coeff": 0.01,  # exploração
+    "use_gae": True,
+    "lambda": 1.0
 }
 
 final_config = run_config.copy()

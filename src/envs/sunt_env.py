@@ -37,7 +37,7 @@ class parallel_env(ParallelEnv):
         # --- Agentes ---
         self._num_agents = num_agents
         self.possible_agents = [f"agent_{i}" for i in range(self._num_agents)]
-        self.agents = self.possible_agents.copy()  # <- MARLlib precisa disso
+        self.agents = self.possible_agents.copy()  # <- MARLlib needs this
         self.agent_name_mapping = {agent: i for i, agent in enumerate(self.possible_agents)}
 
         # --- Stop/Reward classes ---
@@ -200,7 +200,7 @@ class parallel_env(ParallelEnv):
             ], dtype=np.float32)
 
             # APPLY CLIPPING HERE!
-            #    Use os limites (low/high) que você definiu no seu observation_space
+            #    Use the limits (low/high) that you defined in your observation_space
             clipped_obs = np.clip(
                 obs_array,
                 self.observation_space(agent).low,  # Accessing the limits of the Box space
@@ -596,27 +596,27 @@ class StopConditionBaseClass():
         
 class DefaultReward(RewardBaseClass):
     """
-    Recompensa composta e NORMALIZADA para [-1, +1] por passo.
-    Componentes:
-      - occ: penaliza fora do intervalo ideal (quadrática, 0..1, sinal -)
-      - uptime: bônus direto (0..1, sinal +)
-      - sync: mede regularidade dos headways vs alvo (0..1, sinal +)
-      - efficiency: 1 - (estimated/expected) truncado (0..1, sinal +)
+    Compound reward and NORMALIZED to [-1, +1] per step.
+    Components:
+      - occ: penalizes out of ideal range (quadratic, 0..1, sign -)
+      - uptime: direct bonus (0..1, sign +)
+      - sync: measures regularity of headways vs target (0..1, sign +)
+      - efficiency: 1 - (estimated/expected) truncated (0..1, sign +)
     """
     def __init__(self, waitTimeDict=None, reward_weights=None, occupancy_range=(0.6, 0.9),
                  target_headway_seconds: float = 600.0,  # 10 minutos
                  max_sync_rel_std: float = 1.0          # >1 é truncado
                  ):
         super().__init__()
-        # self.waitTimeDict pode ser usado se necessário para outras métricas
+        # self.waitTimeDict can be used if needed for other metrics
         self.waitTimeDict = waitTimeDict or {}
 
-        # Pesos ajustáveis (soma não precisa dar 1; fazemos média ponderada)
+        # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.6,        # menor que 1 para não dominar
-            "uptime_bonus": 0.6,
-            "sync_score": 0.3,         # começe baixo; aumente depois
-            "energy_efficiency": 0.5
+            "occ_penalty": 0.5,        # less than 1 to not dominate
+            "uptime_bonus": 0.7,
+            "sync_score": 0.5,         
+            "energy_efficiency": 0.6
         }
 
         self.occupancy_range = occupancy_range
@@ -625,8 +625,8 @@ class DefaultReward(RewardBaseClass):
 
     def _occ_component(self, occupancy: float) -> float:
         """
-        Retorna um valor em [0, 1], onde 0 = perfeito no intervalo ideal; 1 = muito fora.
-        Depois aplicamos sinal negativo ao compor o reward.
+        Returns a value in [0, 1], where 0 = perfect in ideal range; 1 = far off.
+        Then we apply negative sign when composing the reward
         """
         min_occ, max_occ = self.occupancy_range
         if occupancy < min_occ:
@@ -637,33 +637,33 @@ class DefaultReward(RewardBaseClass):
 
     def _sync_component(self, headways: list) -> float:
         """
-        Mede regularidade em [0, 1]: 1 = perfeito (intervalos bem próximos ao alvo),
-        0 = muito irregular (desvio relativo >= max_sync_rel_std).
+        Measures regularity in [0, 1]: 1 = perfect (intervals very close to target),
+        0 = very irregular (relative deviation >= max_sync_rel_std)
         """
         if not headways or len(headways) < 3:
-            return 0.0  # Sem informação suficiente para avaliar regularidade
+            return 0.0  # Not enough information to assess regularity
 
-        # intervalos em segundos
+        # intervals in seconds
         intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)]
-        # remove ruídos/intervalos inválidos
+        # remove noise/invalid intervals
         intervals = [x for x in intervals if x > 0]
         if len(intervals) < 2:
             return 0.0
 
-        # Desvio RMS versus alvo
+        # RMS deviation versus target
         diffs = [(x - self.target_headway) for x in intervals]
         mean_sq = sum(d * d for d in diffs) / len(diffs)
-        rms = mean_sq ** 0.5  # em segundos
+        rms = mean_sq ** 0.5  # in seconds
 
-        # Desvio relativo normalizado (0=perfeito, 1=limite ruim)
+        # Normalized relative deviation (0=perfect, 1=bad limit)
         rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8))
 
-        # Converter para "score" em [0,1], onde 1 é bom
+        # Convert to "score" in [0,1], where 1 is good
         return 1.0 - rel
 
     def _efficiency_component(self, estimated_time: float, expected_time: float) -> float:
         """
-        Eficiência de viagem em [0,1]. 1 = igual/menor que o esperado; 0 = pior que o esperado.
+        Travel efficiency in [0,1]. 1 = equal/to less than expected; 0 = worse than expected.
         """
         if expected_time <= 0:
             return 0.0
@@ -676,7 +676,7 @@ class DefaultReward(RewardBaseClass):
         estimated_time, expected_time, delay,
         agent_state=None, headways=None
     ):
-        # Componentes normalizadas
+        # Normalized components
         occ_pen = 0.0
         uptime = 0.0
         sync = 0.0
@@ -689,8 +689,8 @@ class DefaultReward(RewardBaseClass):
         sync = self._sync_component(headways or [])
         eff = self._efficiency_component(float(estimated_time), float(expected_time))
 
-        # Combinação ponderada (mantendo cada termo em [-1, +1])
-        # occ_pen entra com sinal NEGATIVO
+        # Weighted combination (keeping each term in [-1, +1])
+        # occ_pen enters with NEGATIVE sign
         w = self.reward_weights
         reward = (
             -w["occ_penalty"] * occ_pen +
@@ -699,12 +699,13 @@ class DefaultReward(RewardBaseClass):
              w["energy_efficiency"] * eff
         )
 
-        # Normaliza pela soma dos pesos para manter magnitude em ~[-1, +1]
+        # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
         weight_sum = (abs(w["occ_penalty"]) + w["uptime_bonus"] + w["sync_score"] + w["energy_efficiency"])
         if weight_sum > 0:
             reward = reward / weight_sum
 
-        # Clip final para segurança numérica
+        # Clip final for numerical stability
+        # reward += 0.2
         reward = float(np.clip(reward, -1.0, 1.0))
         return reward
 

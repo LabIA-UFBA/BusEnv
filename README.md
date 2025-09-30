@@ -216,7 +216,5 @@ marllib view-metrics -- --help
 
 # Run the SUNT environment entrypoint
 marllib env-sunt --
-
-
 ---
 
