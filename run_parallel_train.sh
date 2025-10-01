@@ -18,10 +18,27 @@ export PYTHONPATH="${ROOT_DIR}/src:${PYTHONPATH}"
 TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 
 # ✅ Lista com TODOS os algoritmos (edite à vontade)
-algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
-       "maa2c" "coma" "maddpg" "matrpo" "mappo" \
-       "hatrpo" "happo" "vdn" "qmix" "facmac" \
+# algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
+#        "maa2c" "coma" "maddpg" "matrpo" "mappo" \
+#        "hatrpo" "happo" "vdn" "qmix" "facmac" \
+#        "vda2c" "vdppo")
+
+algos=("ia2c" "itrpo" "ippo" \
+       "maa2c" "coma" "matrpo" "mappo" \
+       "hatrpo" "happo" \
        "vda2c" "vdppo")
+
+# Funcionaram 100%
+# IA2C 
+
+# Joint q learning does not support individual function
+# Iql, qmix, vdn
+
+# Saíram pois precisam de ações continuas
+# facmac, iddpg, maddpg
+
+# Não está na lib
+# "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade)
 runs_per_algo=1
