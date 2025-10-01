@@ -1,44 +1,59 @@
 #!/bin/bash
-# -------------------------
-# Nohup launcher for MARLlib training (with CodeCarbon enabled by default)
-# -------------------------
+# ---------------------------------------------------------
+# Nohup launcher para MARLlib (CodeCarbon ligado por padrão)
+# Estrutura esperada:
+#   ./run_all.sh
+#   ./src/pipelines/train_marllib.py
+#   ./codecarbon  (será criado se não existir)
+#   ./logs        (será criado se não existir)
+# ---------------------------------------------------------
 
-# ✅ All available MARLlib algorithms
+# Descobre a raiz do projeto (pasta onde está este script)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Garante que o Python encontre os módulos em ./src
+export PYTHONPATH="${ROOT_DIR}/src:${PYTHONPATH}"
+
+# Caminho do trainer parametrizado
+TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
+
+# ✅ Lista com TODOS os algoritmos (edite à vontade)
 algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
        "maa2c" "coma" "maddpg" "matrpo" "mappo" \
        "hatrpo" "happo" "vdn" "qmix" "facmac" \
        "vda2c" "vdppo")
 
-# 🔄 Number of runs per algorithm
+# 🔄 Número de execuções por algoritmo (edite à vontade)
 runs_per_algo=1
 
-# CodeCarbon output directory
-cc_outdir="./codecarbon"
+# Pastas de saída
+LOG_DIR="${ROOT_DIR}/logs"
+CC_OUTDIR="${ROOT_DIR}/codecarbon"
 
-# Logs directory
-logdir="logs"
-mkdir -p "$logdir"
-mkdir -p "$cc_outdir"   # <-- ensure CodeCarbon folder exists
+mkdir -p "${LOG_DIR}"
+mkdir -p "${CC_OUTDIR}"   # CodeCarbon exige que exista
 
 # -------------------------
-# Main loop
+# Loop principal
 # -------------------------
 for algo in "${algos[@]}"; do
-  for run in $(seq 1 $runs_per_algo); do
+  for run in $(seq 1 "${runs_per_algo}"); do
     run_id="run${run}"
-    log_file="${logdir}/${algo}_${run_id}.log"
+    log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-    echo "Launching: $algo (Run $run) -> $log_file"
+    echo "Lançando: ${algo} (Run ${run}) -> ${log_file}"
 
-    nohup python ./src/pipelines/train_marllib.py \
-      --algo "$algo" \
-      --cc-run-id "$algo-$run_id" \
-      --cc-output-dir "$cc_outdir" \
-      > "$log_file" 2>&1 &
+    nohup python "${TRAIN_SCRIPT}" \
+      --algo "${algo}" \
+      --cc-run-id "${algo}-${run_id}" \
+      --cc-output-dir "${CC_OUTDIR}" \
+      > "${log_file}" 2>&1 &
 
-    # Small delay so jobs don’t all start at the same time
+    # Pequeno atraso para não iniciar tudo no mesmo instante
     sleep 2
   done
 done
 
-echo "✅ All jobs launched in background. Logs available in $logdir/"
+echo "✅ Todos os jobs foram lançados em background."
+echo "📄 Logs: ${LOG_DIR}"
+echo "🌱 CodeCarbon CSV: ${CC_OUTDIR}/emissions.csv (por padrão)"
