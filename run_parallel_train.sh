@@ -12,6 +12,9 @@ algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
 # 🔄 Number of runs per algorithm
 runs_per_algo=1
 
+# Optional: CodeCarbon output directory (comment to use default ./codecarbon)
+cc_outdir="./codecarbon"
+
 # Logs directory
 logdir="logs"
 mkdir -p "$logdir"
@@ -26,11 +29,13 @@ for algo in "${algos[@]}"; do
 
     echo "Launching: $algo (Run $run) -> $log_file"
 
-    nohup python ./src/pipelines/train_marllib.py \
+    nohup python train_marllib.py \
       --algo "$algo" \
       --cc-run-id "$algo-$run_id" \
+      --cc-output-dir "$cc_outdir" \
       > "$log_file" 2>&1 &
 
+    # Small delay so jobs don’t all start at the same time
     sleep 2
   done
 done
