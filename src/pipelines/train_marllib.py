@@ -176,7 +176,21 @@ ALGO_CONFIGS = {
     # "facmac": {"lr": 0.0010, "batch_episode": 25},
     # "vda2c": {"lr": 0.0003, "batch_episode": 20},
     # "vdppo": {"lr": 0.0003, "batch_episode": 20},
+    
 }
+
+ALGO_CONFIGS = {
+    # Apenas os algoritmos que exigem coerência entre train_batch_size e sgd_minibatch_size
+    "itrpo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "ippo":   {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "matrpo": {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "mappo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "hatrpo": {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "happo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+    "vdppo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
+}
+
+
 DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20}
 
 # ------------------------------
@@ -219,31 +233,16 @@ def main():
     model = marl.build_model(env_tuple, algo, model_config)
 
     # Base run config
-    # run_config = {
-    #     "local_mode": False,
-    #     "stop": {"timesteps_total": 1000},  # your requested 400k
-    #     "checkpoint_freq": 200,
-    #     "num_gpus": 0,         # adjust as needed
-    #     "num_workers": 2,
-    #     "share_policy": "individual",
-    # }
-
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 1000},
+        "stop": {"timesteps_total": 1000},  # your requested 400k
         "checkpoint_freq": 200,
-        "num_gpus": 0,
+        "num_gpus": 0,         # adjust as needed
         "num_workers": 2,
         "share_policy": "individual",
-
-        # --- PPO/HATRPO essentials: make these consistent ---
-        "train_batch_size": 4096,        # any value >= sgd_minibatch_size
-        "sgd_minibatch_size": 512,       # <= train_batch_size
-        "num_sgd_iter": 10,              # typical default
-        "rollout_fragment_length": 200,  # helps form batches cleanly
-        # Optional but often helpful:
-        "framework": "torch",
     }
+
+
 
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
