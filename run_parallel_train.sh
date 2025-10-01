@@ -29,7 +29,7 @@ for algo in "${algos[@]}"; do
 
     echo "Launching: $algo (Run $run) -> $log_file"
 
-    nohup python train_marllib.py \
+    nohup python ./src/pipelines/train_marllib.py \
       --algo "$algo" \
       --cc-run-id "$algo-$run_id" \
       --cc-output-dir "$cc_outdir" \
