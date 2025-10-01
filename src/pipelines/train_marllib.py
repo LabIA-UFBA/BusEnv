@@ -2,6 +2,7 @@ import os
 import pickle
 import time
 import argparse
+import warnings
 import numpy as np
 from gym.spaces import Dict as GymDict
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -11,18 +12,25 @@ from envs.sunt_env import parallel_env
 from supersuit import pad_observations_v0, pad_action_space_v0
 from contextlib import nullcontext
 
+# Quiet PettingZoo deprecation chatter
+warnings.filterwarnings("ignore", message="The observation_spaces dictionary is deprecated")
+warnings.filterwarnings("ignore", message="The action_spaces dictionary is deprecated")
+
 # ---------- Optional CodeCarbon wrapper ----------
 def _make_tracker(enabled: bool, *, project_name: str, output_dir: str = None):
     """
     Create a CodeCarbon tracker if enabled; otherwise return a no-op ctx.
+    Ensures output_dir exists when provided.
     """
     if not enabled:
         return nullcontext(), None
 
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     try:
         from codecarbon import EmissionsTracker
     except Exception:
-        # Graceful fallback if CodeCarbon isn't installed
         print("[codecarbon] CodeCarbon is not installed. pip install codecarbon", flush=True)
         return nullcontext(), None
 
@@ -105,19 +113,16 @@ class RLlibSuntBus(MultiAgentEnv):
         self.action_spaces = {agent: self.env.action_space(agent) for agent in self.agents}
 
     def reset(self):
-        original_obs = self.env.reset()  # dict: {agent_id: obs}
+        original_obs = self.env.reset()
         self.agents = list(original_obs.keys())
-        obs = {agent: {"obs": np.array(o)} for agent, o in original_obs.items()}
-        return obs
+        return {agent: {"obs": np.array(o)} for agent, o in original_obs.items()}
 
     def step(self, action_dict):
         o, r, d, info = self.env.step(action_dict)
-
         obs = {agent: {"obs": np.array(o[agent])} for agent in o.keys()}
         rewards = {agent: r.get(agent, 0.0) for agent in r.keys()}
         dones = {"__all__": all(d.values())}
         infos = {agent: info.get(agent, {}) for agent in info.keys()}
-
         self.agents = [a for a in self.agents if not d.get(a, False)]
         return obs, rewards, dones, infos
 
@@ -130,8 +135,7 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env.close()
 
     def get_env_info(self):
-        """Return environment information in a dictionary format (used by MARLlib)."""
-        env_info = {
+        return {
             "space_obs": self.observation_space,
             "space_act": self.action_space,
             "num_agents": self.num_agents,
@@ -146,7 +150,6 @@ class RLlibSuntBus(MultiAgentEnv):
                 }
             },
         }
-        return env_info
 
 # Register environment
 ENV_REGISTRY["sunt_bus"] = RLlibSuntBus
@@ -193,12 +196,17 @@ def main():
         ],
         help="Which MARLlib algorithm to train.",
     )
-    # CodeCarbon args (parsed here so run_all.sh can pass them)
+    # CodeCarbon args
     parser.add_argument("--cc-run-id", default=None, help="Unique run identifier for CodeCarbon logging.")
     parser.add_argument("--cc-output-dir", default="./codecarbon", help="Directory to store CodeCarbon CSV/JSON.")
     parser.add_argument("--no-cc", action="store_true", help="Disable CodeCarbon tracking.")
 
     args = parser.parse_args()
+
+    # Ensure CC dir exists (prevents OSError)
+    outdir = args.cc_output_dir if not args.no_cc else None
+    if outdir:
+        os.makedirs(outdir, exist_ok=True)
 
     # Environment
     env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
@@ -213,14 +221,13 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 10},  # <-- per your request
+        "stop": {"timesteps_total": 400_000},  # your requested 400k
         "checkpoint_freq": 200,
-        "num_gpus": 1,         # adjust to your hardware (0 for CPU-only, fractional allowed)
+        "num_gpus": 1,         # adjust as needed
         "num_workers": 2,
         "share_policy": "individual",
     }
 
-    # Merge algo-specific config (if uncommented in ALGO_CONFIGS)
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
     stop_conditions = final_config.pop("stop")
@@ -229,7 +236,7 @@ def main():
     tracker_ctx, _ = _make_tracker(
         enabled=not args.no_cc,
         project_name=f"marllib:{args.algo}:{args.cc_run_id or 'default'}",
-        output_dir=args.cc_output_dir,
+        output_dir=outdir,
     )
 
     # Train

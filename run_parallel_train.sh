@@ -12,12 +12,13 @@ algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
 # 🔄 Number of runs per algorithm
 runs_per_algo=1
 
-# Optional: CodeCarbon output directory (comment to use default ./codecarbon)
+# CodeCarbon output directory
 cc_outdir="./codecarbon"
 
 # Logs directory
 logdir="logs"
 mkdir -p "$logdir"
+mkdir -p "$cc_outdir"   # <-- ensure CodeCarbon folder exists
 
 # -------------------------
 # Main loop
