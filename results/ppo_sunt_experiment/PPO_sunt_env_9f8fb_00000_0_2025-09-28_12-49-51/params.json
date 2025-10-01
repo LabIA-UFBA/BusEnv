@@ -1,0 +1,24 @@
+{
+  "env": "sunt_env",
+  "env_config": {
+    "actions_amount": 3,
+    "max_steps": 1000000,
+    "num_agents": 5
+  },
+  "framework": "torch",
+  "gamma": 0.99,
+  "multiagent": {
+    "policies": {
+      "shared_policy": [
+        null,
+        "Box([0. 0. 0. 0. 0. 0. 0. 0.], [1.e+00 1.e+00 1.e+00 1.e+06 1.e+00 1.e+00 2.e+09 2.e+09], (8,), float32)",
+        "Discrete(3)",
+        {}
+      ]
+    },
+    "policy_mapping_fn": "<function main.<locals>.<lambda> at 0x7fea212c9160>"
+  },
+  "num_gpus": 0,
+  "num_workers": 1,
+  "train_batch_size": 4000
+}

@@ -67,7 +67,6 @@ def _run_module(mod_path: str, args: List[str]) -> int:
     except SystemExit as e:
         return int(e.code) if isinstance(e.code, int) else 1
 
-
 def main(argv=None):
     p = argparse.ArgumentParser(prog="marllib", description="Graph Exploration CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -99,9 +98,11 @@ def main(argv=None):
         .add_argument("args", nargs=argparse.REMAINDER)
 
     # ---------------- CodeCarbon flags ----------------
-    # These sit at the top level so they can wrap ANY subcommand.
-    p.add_argument("--cc", action="store_true",
-                   help="Enable CodeCarbon tracking for this run.")
+    cc_group = p.add_mutually_exclusive_group()
+    cc_group.add_argument("--cc", dest="cc", action="store_true", help="Enable CodeCarbon (default).")
+    cc_group.add_argument("--no-cc", dest="cc", action="store_false", help="Disable CodeCarbon.")
+    p.set_defaults(cc=True)
+
     p.add_argument("--cc-output-dir", default=None,
                    help="Directory to store CodeCarbon CSV/JSON (defaults to ./codecarbon).")
     p.add_argument("--cc-offline", action="store_true",
@@ -115,6 +116,8 @@ def main(argv=None):
     p.add_argument("--cc-log-level", default="warning",
                    choices=["debug", "info", "warning", "error"],
                    help="CodeCarbon internal log level.")
+    p.add_argument("--cc-run-id", default=None,
+                   help="Optional run identifier (e.g., 'run01', 'expA', etc.). Defaults to timestamp.")
 
     args = p.parse_args(argv)
 
@@ -137,19 +140,22 @@ def main(argv=None):
     mod = modmap[args.cmd]
     passthrough = getattr(args, "args", []) or []
 
-    # Build a CodeCarbon tracker named after the subcommand for per-command metrics
+    # --- Generate project name for CodeCarbon ---
+    import datetime
+    run_id = args.cc_run_id or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    project_name = f"marllib:{args.cmd}:{run_id}"
+
     tracker_ctx, _tracker = _make_tracker(
-        enabled=getattr(args, "cc", False),
-        project_name=f"marllib:{args.cmd}",
-        output_dir=getattr(args, "cc_output_dir", None),
-        offline=getattr(args, "cc_offline", False),
-        country_iso_code=getattr(args, "cc_country", None),
-        measure_power_secs=getattr(args, "cc_measure_power_secs", None),
-        gpu_ids=getattr(args, "cc_gpu_ids", None),
-        log_level=getattr(args, "cc_log_level", "warning"),
+        enabled=args.cc,
+        project_name=project_name,
+        output_dir=args.cc_output_dir,
+        offline=args.cc_offline,
+        country_iso_code=args.cc_country,
+        measure_power_secs=args.cc_measure_power_secs,
+        gpu_ids=args.cc_gpu_ids,
+        log_level=args.cc_log_level,
     )
 
-    # Run the mapped module with passthrough args under CodeCarbon (if enabled)
     with tracker_ctx:
         return _run_module(mod, passthrough)
 
