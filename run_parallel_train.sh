@@ -1,6 +1,6 @@
 #!/bin/bash
 # -------------------------
-# Nohup launcher for MARLlib training
+# Nohup launcher for MARLlib training (with CodeCarbon enabled by default)
 # -------------------------
 
 # ✅ All available MARLlib algorithms
@@ -10,10 +10,7 @@ algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
        "vda2c" "vdppo")
 
 # 🔄 Number of runs per algorithm
-runs_per_algo=50
-
-# Python entrypoint (your parametrized trainer)
-train_script="./src/pipelines/train_marllib.py"
+runs_per_algo=1
 
 # Logs directory
 logdir="logs"
@@ -29,7 +26,7 @@ for algo in "${algos[@]}"; do
 
     echo "Launching: $algo (Run $run) -> $log_file"
 
-    nohup python "$train_script" \
+    nohup marllib train \
       --algo "$algo" \
       --cc-run-id "$algo-$run_id" \
       > "$log_file" 2>&1 &
