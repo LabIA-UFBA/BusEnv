@@ -219,14 +219,32 @@ def main():
     model = marl.build_model(env_tuple, algo, model_config)
 
     # Base run config
+    # run_config = {
+    #     "local_mode": False,
+    #     "stop": {"timesteps_total": 1000},  # your requested 400k
+    #     "checkpoint_freq": 200,
+    #     "num_gpus": 0,         # adjust as needed
+    #     "num_workers": 2,
+    #     "share_policy": "individual",
+    # }
+
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 1000},  # your requested 400k
+        "stop": {"timesteps_total": 1000},
         "checkpoint_freq": 200,
-        "num_gpus": 0,         # adjust as needed
+        "num_gpus": 0,
         "num_workers": 2,
         "share_policy": "individual",
+
+        # --- PPO/HATRPO essentials: make these consistent ---
+        "train_batch_size": 4096,        # any value >= sgd_minibatch_size
+        "sgd_minibatch_size": 512,       # <= train_batch_size
+        "num_sgd_iter": 10,              # typical default
+        "rollout_fragment_length": 200,  # helps form batches cleanly
+        # Optional but often helpful:
+        "framework": "torch",
     }
+
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
