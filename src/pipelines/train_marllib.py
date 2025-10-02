@@ -179,19 +179,7 @@ ALGO_CONFIGS = {
     
 }
 
-ALGO_CONFIGS = {
-    # Apenas os algoritmos que exigem coerência entre train_batch_size e sgd_minibatch_size
-    "itrpo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "ippo":   {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "matrpo": {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "mappo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "hatrpo": {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "happo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-    "vdppo":  {"train_batch_size": 4096, "sgd_minibatch_size": 512},
-}
-
-
-DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20}
+DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20, "sgd_minibatch_size": 128}
 
 # ------------------------------
 # Main entrypoint
@@ -235,7 +223,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 1000},  # your requested 400k
+        "stop": {"timesteps_total": 400000},  # your requested 400k
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 2,
