@@ -1,3 +1,4 @@
+
 import os
 import pickle
 import time
@@ -90,7 +91,7 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env = parallel_env(
             network=G,
             actions_amount=3,
-            max_steps=1_000_000,
+            max_steps=1000,
             num_agents=5,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
@@ -108,22 +109,102 @@ class RLlibSuntBus(MultiAgentEnv):
         self.agents = self.env.possible_agents.copy()
         self.num_agents = len(self.agents)
 
-        self.observation_space = GymDict({"obs": self.env.observation_space(self.agents[0])})
+        # Base space após wrappers (assume Box compatível entre agentes)
+        self._base_obs_space = self.env.observation_space(self.agents[0])
+        # Shape/dtype "alvo" para todas as observações
+        self._obs_shape = tuple(getattr(self._base_obs_space, "shape", ()))
+        if len(self._obs_shape) == 0:
+            # fallback: trata como escalar
+            self._obs_shape = (1,)
+        self._obs_size = int(np.prod(self._obs_shape))
+        self._obs_dtype = np.float32
+
+        # Exponha um Dict({"obs": space}) para compatibilidade com o que você já tinha
+        self.observation_space = GymDict({"obs": self._base_obs_space})
         self.action_space = self.env.action_space(self.agents[0])
         self.action_spaces = {agent: self.env.action_space(agent) for agent in self.agents}
 
+        # Termina todos juntos quando qualquer um terminar (lockstep)
+        self._team_done = True
+
+    # ---------- helpers ----------
+    def _fix_obs(self, o):
+        """Força dtype=float32 e shape fixo. Trunca ou 'padd' com zeros se necessário."""
+        x = np.asarray(o, dtype=self._obs_dtype)
+        if x.shape != self._obs_shape:
+            flat = x.ravel()
+            if flat.size < self._obs_size:
+                pad = np.zeros(self._obs_size - flat.size, dtype=self._obs_dtype)
+                flat = np.concatenate([flat, pad], axis=0)
+            elif flat.size > self._obs_size:
+                flat = flat[:self._obs_size]
+            x = flat.reshape(self._obs_shape)
+        return x
+
+    def _wrap_obs_dict(self, obs_dict):
+        """Converte dict simples em {agent: {'obs': array(...)}} com shape/dtype fixos."""
+        wrapped = {}
+        for agent in self.agents:
+            raw = obs_dict.get(agent, np.zeros(self._obs_shape, dtype=self._obs_dtype))
+            wrapped[agent] = {"obs": self._fix_obs(raw)}
+        return wrapped
+
+    def _default_action(self, agent):
+        """Ação 'no-op' robusta para Discrete/MultiDiscrete."""
+        sp = self.action_spaces[agent]
+        # MultiDiscrete tem atributo nvec
+        if hasattr(sp, "nvec"):
+            return np.zeros_like(sp.nvec, dtype=np.int64)
+        # Discrete → 0
+        if hasattr(sp, "n"):
+            return 0
+        # Fallback: tenta 0
+        return 0
+
+    # ---------- MultiAgentEnv API ----------
     def reset(self):
         original_obs = self.env.reset()
-        self.agents = list(original_obs.keys())
-        return {agent: {"obs": np.array(o)} for agent, o in original_obs.items()}
+        # Garante conjunto completo e ordenado de agentes durante o episódio
+        self.agents = self.env.possible_agents.copy()
+
+        # Alguns envs não retornam todos os agentes no reset → preencha
+        for a in self.agents:
+            original_obs.setdefault(a, np.zeros(self._obs_shape, dtype=self._obs_dtype))
+
+        return self._wrap_obs_dict(original_obs)
 
     def step(self, action_dict):
+        # Preenche ações ausentes para manter lockstep
+        for a in self.agents:
+            if a not in action_dict:
+                action_dict[a] = self._default_action(a)
+
         o, r, d, info = self.env.step(action_dict)
-        obs = {agent: {"obs": np.array(o[agent])} for agent in o.keys()}
-        rewards = {agent: r.get(agent, 0.0) for agent in r.keys()}
-        dones = {"__all__": all(d.values())}
-        infos = {agent: info.get(agent, {}) for agent in info.keys()}
-        self.agents = [a for a in self.agents if not d.get(a, False)]
+
+        # Se qualquer agente terminou e lockstep ativo → todos terminam
+        if self._team_done and any(d.get(a, False) for a in self.agents):
+            for a in self.agents:
+                d[a] = True
+
+        # Garanta chaves para todos os agentes
+        for a in self.agents:
+            if a not in o:
+                o[a] = np.zeros(self._obs_shape, dtype=self._obs_dtype)
+            if a not in r:
+                r[a] = 0.0
+            if a not in d:
+                d[a] = False
+            if a not in info:
+                info[a] = {}
+
+        obs = self._wrap_obs_dict(o)
+        rewards = {a: float(r[a]) for a in self.agents}
+        dones = {"__all__": all(d.get(a, False) for a in self.agents)}
+        infos = {a: info[a] for a in self.agents}
+
+        # Mantém a lista de agentes estável até o próximo reset (não remova no meio do episódio)
+        # if dones["__all__"]:  # nada a fazer aqui; reset tratará na próxima chamada
+
         return obs, rewards, dones, infos
 
     def render(self, mode=None):
@@ -150,6 +231,7 @@ class RLlibSuntBus(MultiAgentEnv):
                 }
             },
         }
+
 
 # Register environment
 ENV_REGISTRY["sunt_bus"] = RLlibSuntBus
@@ -223,7 +305,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 100},  # your requested 400k
+        "stop": {"timesteps_total": 400000},  # your requested 400k
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 2,

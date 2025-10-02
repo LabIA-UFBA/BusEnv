@@ -176,6 +176,33 @@ If you need to run the custom model, go to the a2c.py file in the path "/MARLlib
 1 - Add the import "from models.custom_a3c_torch_policy import CustomA3CTorchPolicy"
 2 - Where it says "IA2CTorchPolicy = A3CTorchPolicy.with_updates" replace it with "IA2CTorchPolicy = CustomA3CTorchPolicy.with_updates"
 
+
+## 16. Code Carbon
+python -m pip install codecarbon
+# 1) Stop Ray and any running nohup training processes
+ray stop
+
+# 2) Remove existing Pydantic (2.x) and its core module
+python -m pip uninstall -y pydantic pydantic-core
+
+# 3) Install Pydantic 1.10.x (compatible with Ray and MARLlib)
+python -m pip install "pydantic==1.10.13"
+
+# 4) (Optional) Install an older version of typing-extensions for compatibility
+python -m pip install "typing-extensions<4.6" -q
+
+# 5) (Optional) Reinstall CodeCarbon without dependencies to avoid upgrading Pydantic again
+#    Using --no-deps ensures that no package updates Pydantic automatically.
+python -m pip install --upgrade --no-deps codecarbon
+
+# 6) Verify the installation
+python - << 'PY'
+import pydantic, ray
+print("pydantic:", pydantic.__version__)
+print("ray:", ray.__version__)
+PY
+
+
 ```
 
 ### CLI (`graphx`)

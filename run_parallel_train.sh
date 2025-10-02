@@ -22,21 +22,14 @@ cd ..
 TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 
 # ✅ Lista com TODOS os algoritmos (edite à vontade)
-algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
-       "maa2c" "coma" "maddpg" "matrpo" "mappo" \
-       "hatrpo" "happo" "vdn" "qmix" "facmac" \
-       "vda2c" "vdppo")
-
-ippo
-itrpo
-
-# algos=("ia2c" "itrpo" "ippo" \
-#        "maa2c" "coma" "matrpo" "mappo" \
-#        "hatrpo" "happo" \
+# algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
+#        "maa2c" "coma" "maddpg" "matrpo" "mappo" \
+#        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-# algos=("ia2c")
-# algos=("itrpo")
+algos=( "itrpo" "ippo"
+       "maa2c" "coma" "matrpo" "mappo"
+       "hatrpo" "happo")
 
 # Funcionaram 100%
 # IA2C 
