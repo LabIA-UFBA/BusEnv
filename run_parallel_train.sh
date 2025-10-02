@@ -13,22 +13,30 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Garante que o Python encontre os módulos em ./src
 export PYTHONPATH="${ROOT_DIR}/src:${PYTHONPATH}"
+export PYTHONPATH=$(pwd):$PYTHONPATH
+cd MARLlib
+export PYTHONPATH=$(pwd):$PYTHONPATH
+cd ..
 
 # Caminho do trainer parametrizado
 TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 
 # ✅ Lista com TODOS os algoritmos (edite à vontade)
-# algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
-#        "maa2c" "coma" "maddpg" "matrpo" "mappo" \
-#        "hatrpo" "happo" "vdn" "qmix" "facmac" \
-#        "vda2c" "vdppo")
+algos=("iql" "ipg" "ia2c" "iddpg" "itrpo" "ippo" \
+       "maa2c" "coma" "maddpg" "matrpo" "mappo" \
+       "hatrpo" "happo" "vdn" "qmix" "facmac" \
+       "vda2c" "vdppo")
+
+ippo
+itrpo
 
 # algos=("ia2c" "itrpo" "ippo" \
 #        "maa2c" "coma" "matrpo" "mappo" \
 #        "hatrpo" "happo" \
 #        "vda2c" "vdppo")
 
-algos=("ia2c")
+# algos=("ia2c")
+# algos=("itrpo")
 
 # Funcionaram 100%
 # IA2C 
@@ -43,7 +51,7 @@ algos=("ia2c")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade)
-runs_per_algo=10
+runs_per_algo=1
 
 # Pastas de saída
 LOG_DIR="${ROOT_DIR}/logs"

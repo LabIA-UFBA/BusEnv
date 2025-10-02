@@ -223,7 +223,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 400000},  # your requested 400k
+        "stop": {"timesteps_total": 100},  # your requested 400k
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 2,
