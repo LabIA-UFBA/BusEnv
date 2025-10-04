@@ -44,7 +44,7 @@ algos=( "itrpo" "ippo"
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade)
-runs_per_algo=10
+runs_per_algo=50
 
 # Pastas de saída
 LOG_DIR="${ROOT_DIR}/logs"

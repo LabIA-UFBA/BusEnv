@@ -9,7 +9,6 @@ dist/
 build/
 sunt/
 SUNT/
-MARLlib/
 exp_results/
 tensorboard_graph_exploration/
 logs.txt
