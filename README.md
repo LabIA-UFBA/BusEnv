@@ -217,6 +217,9 @@ marllib train-custom-a2c -- --help
 # Train with RLlib
 marllib train
 
+# Train with a series of algs
+bash run_parallel_train.sh
+
 # Dataset statistics (mean, std, etc.)
 marllib stats -- --help
 
