@@ -1,4 +1,4 @@
-# 🚍 Graph Exploration – Multi-Agent Urban Bus Simulation (Modular)
+# 🚍 Bus Env – Multi-Agent Urban Bus Simulation (Modular)
 
 This project provides a **multi-agent reinforcement learning environment** for urban bus operations, based on real-world data from the **Salvador Urban Network Transportation (SUNT)** system.  
 It has been refactored into a **modular package** with a clean structure, clear separation of concerns, and a unified CLI.
