@@ -1,5 +1,5 @@
 # SUNT dataset needed to run this script
-# CHANGE: base_path = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
+# CHANGE: base_path = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
 
 import os
 import pandas as pd
@@ -77,7 +77,7 @@ def process_date_folder(date_str: str, base_data_path: str) -> dict:
 
 
 # ==== Principal ====
-base_path = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp" 
+base_path = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp" 
 output_path = "./output" # Where the output files will be saved
 
 if not os.path.exists(output_path):

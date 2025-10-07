@@ -1,5 +1,5 @@
 # SUNT dataset needed to run this script
-# CHANGE: BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
+# CHANGE: BASE_PATH = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
 
 import os
 import re
@@ -10,7 +10,7 @@ import networkx as nx
 from collections import defaultdict
 
 # === Main Paths ===
-BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp"
+BASE_PATH = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp"
 OUTPUT_PATH = "../training_observation"
 GRAPH_PATH = "../viz/graph_gtfs_fev_2024.gpickle" # Path to the GTFS graph
 

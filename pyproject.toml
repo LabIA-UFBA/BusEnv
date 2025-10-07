@@ -8,10 +8,7 @@ version = "0.1.0"
 description = "SUNT - MARL for urban mobility"
 readme = "README.md"
 requires-python = ">=3.8,<3.10"
-authors = [
-    {name = "Wesley Silva"},
-    {name = "Rafael Costa"}
-]
+
 license = {text = "MIT"}
 dependencies = []
 

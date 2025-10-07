@@ -1,5 +1,5 @@
 # SUNT dataset needed to run this script
-# CHANGE: BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
+# CHANGE: BASE_PATH = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp" to your sunt path
 
 
 import os
@@ -13,7 +13,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # Path to the base directory and output directory
-BASE_PATH = "/media/wesley/Disco_local/graph-exploration/SUNT/tmp"
+BASE_PATH = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp"
 OUTPUT_PATH = "../training_observation"
 GRAPH_PATH = "./src/viz/graph_gtfs_fev_2024.gpickle"
 
