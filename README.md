@@ -119,19 +119,19 @@ exec "$SHELL"
 
 
 ```bash
-## 1) Criar e ativar o ambiente
+## 1) Create and activate the environment
 conda create -n marllib python=3.8 -y
 conda activate marllib
 
-## 2) Confirmar que estamos usando o Python/Pip do ambiente
+## 2) Confirm that we are using the environment's Python/Pip
 which python
 python --version
 python -m pip --version
 
-## 3) Ajustar as ferramentas no env marllib (usa o pip do próprio env)
+## 3) Adjust the tools in the marllib env (uses the env's own pip)
 python -m pip install --upgrade "pip==21.0" "setuptools==65.5.0" "wheel==0.38.0"
 
-## 4) Gym compatível (API antiga)
+## 4) Gym compatible (old API)
 python -m pip install "gym==0.20.0"
 
 ## 5. Clone MARLlib
