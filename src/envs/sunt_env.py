@@ -117,6 +117,8 @@ class parallel_env(ParallelEnv):
         self.real_routes = real_routes or {}
         self.route_metadata = route_metadata or {}
         self.agent_routes = {}
+        self.agents_per_route = 3 # Number of agents sharing the same route
+        self.fixed_agent_routes = None
 
         self.metrics_file = "env_metrics.csv" # To log metrics for analysis
 
@@ -134,7 +136,7 @@ class parallel_env(ParallelEnv):
         if seed is not None:
             self.np_random, _ = gym.utils.seeding.np_random(seed)
 
-        self.agents = self.possible_agents[:]  
+        self.agents = self.possible_agents[:]
         self.states = {}
         self.targets = {}
         self.steps = {}
@@ -145,15 +147,46 @@ class parallel_env(ParallelEnv):
         self.headways = {}
         self.sync_stats = {}
         self.agent_states = {}
-
-        observations = {}
         self.infos = {}
+        observations = {}
 
+        # --- FIXED ROUTE INITIALIZATION ---
+        if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
+            self.fixed_agent_routes = {}
+            num_agents = len(self.agents)
+            routes = list(self.real_routes.items())
+            num_routes = len(routes)
+            agents_per_route = getattr(self, "agents_per_route", 1)
+
+            agent_routes_assignment = []
+            agent_idx = 0
+
+            for i, (trip_id, path) in enumerate(routes):
+                if agent_idx >= num_agents:
+                    break
+                assigned_agents = self.agents[agent_idx:agent_idx + agents_per_route]
+                agent_routes_assignment.append((trip_id, path, assigned_agents))
+                for agent in assigned_agents:
+                    self.fixed_agent_routes[agent] = path
+                agent_idx += agents_per_route
+
+            # --- DEBUG PRINT (only once) ---
+            print("\n=== [ROUTE ASSIGNMENT DEBUG - INITIALIZED ONCE] ===")
+            for trip_id, path, assigned_agents in agent_routes_assignment:
+                route_preview = " → ".join(str(n) for n in path[:5])
+                if len(path) > 5:
+                    route_preview += " → ..."
+                print(f"Trip ID: {trip_id:<10} | Agents: {', '.join(assigned_agents)} | "
+                    f"Route length: {len(path):<3} | Path: {route_preview}")
+            print("====================================================\n")
+
+        # --- Use the fixed routes every reset ---
+        self.agent_routes = self.fixed_agent_routes
+
+        # --- Initialize Agent States ---
         for agent in self.agents:
-            if agent not in self.agent_routes:  
-                trip_id, path = random.choice(list(self.real_routes.items()))
-                print(f"[DEBUG] Route chosen for {agent} (Trip ID: {trip_id}): {path}")
-                self.agent_routes[agent] = path
+            if agent not in self.agent_routes:
+                raise ValueError(f"[RESET ERROR] Agent {agent} did not receive a route!")
 
             path = self.agent_routes[agent]
             if len(path) < 2:
@@ -199,32 +232,28 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(next_node)],
             ], dtype=np.float32)
 
-            # APPLY CLIPPING HERE!
-            #    Use the limits (low/high) that you defined in your observation_space
             clipped_obs = np.clip(
                 obs_array,
-                self.observation_space(agent).low,  # Accessing the limits of the Box space
-                self.observation_space(agent).high, # Accessing the limits of the Box space
+                self.observation_space(agent).low,
+                self.observation_space(agent).high,
             )
 
             observations[agent] = clipped_obs
-
-
             self.infos[agent] = {
                 "chosen_route": path,
                 "expected_time": self.expected_times[agent],
             }
 
-        #print(f"[RESET] Environment reset. Agents: {self.agents}")
-
-        self.current_episode_metrics = {  # Metrics for the current episode
+        # --- Agent Episode Metrics ---
+        self.current_episode_metrics = {
             "rewards": {agent: 0.0 for agent in self.agents},
             "steps": {agent: 0 for agent in self.agents},
             "done": False
         }
 
-        # return only observations
         return observations
+
+
 
     
     def step(self, actions):
