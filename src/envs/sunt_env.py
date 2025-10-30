@@ -23,10 +23,10 @@ class parallel_env(ParallelEnv):
     # real_routes: dict mapping agent_id to a fixed route (list of nodes)
     # route_metadata: dict with metadata for each route (optional)
     def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2,
-                 stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
-                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
-                 occupancy_rate=None, uptime_normalized=None,
-                 real_routes=None, route_metadata=None):  
+                stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
+                render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
+                occupancy_rate=None, uptime_normalized=None,
+                real_routes=None, route_metadata=None):  
 
         # --- Basic configuration ---
         self.network = network
@@ -34,7 +34,7 @@ class parallel_env(ParallelEnv):
         self.max_steps = max_steps 
         self.render_mode = render_mode
 
-        # --- Agentes ---
+        # --- Agents ---
         self._num_agents = num_agents
         self.possible_agents = [f"agent_{i}" for i in range(self._num_agents)]
         self.agents = self.possible_agents.copy()  # <- MARLlib needs this
@@ -44,7 +44,7 @@ class parallel_env(ParallelEnv):
         self.stop = DefaultStopClass() if stopClass is None else stopClass
         self.reward = DefaultReward() if rewardClass is None else rewardClass
 
-        # --- Map nodes to indexes ---
+        # --- Node index mapping ---
         self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)}  
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
 
@@ -66,7 +66,7 @@ class parallel_env(ParallelEnv):
         self.uptime_normalized = uptime_normalized or {}
 
         # --- Global clock and statistics ---
-        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents} # Every agent starts at 6:00 AM 
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # Every agent starts at 6:00 AM 
         self.headways = {}
         self.sync_stats = {}
 
@@ -76,16 +76,17 @@ class parallel_env(ParallelEnv):
         self.agent_states = {}
         for agent_id in self.possible_agents:
             self.agent_states[agent_id] = {
-                "location": None,
+                "location": None,  # current location of the agent
                 "occupancy": 0.0,
                 "uptime": 1.0,
                 "fuel": 100.0,
-                "maintenance_status": "ok",
+                "maintenance_status": "ok", # can be "ok", "needs_service", etc.
                 "schedule": [],
                 "route": None,
                 "route_idx": 0,
-                "needs_service": False,
-                "going_forward": True,
+                "needs_service": False, # indicates if the agent needs maintenance
+                "going_forward": True, # indicates direction along the route
+                "status": "active",  # state is always active
             }
 
         # --- Reward parameters ---
@@ -101,6 +102,7 @@ class parallel_env(ParallelEnv):
         self.observation_spaces = {
             agent: self.observation_space(agent) for agent in self.possible_agents
         }
+        # Ensure the action space supports what we need
         self.action_spaces = {
             agent: self.action_space(agent) for agent in self.possible_agents
         }
@@ -112,7 +114,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation/daily" # Path to daily data files
+        self.daily_data_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -121,29 +123,40 @@ class parallel_env(ParallelEnv):
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
 
+        # --- Simulation control flags ---
         self._advance_day = False
+        self.day_done = False          # Ensures consistent state for daily progression
+        self.sim_done = False          # Used for final termination when all days end
+        self.simulated_days = 0        # Total simulated days counter
 
+        # --- Limits and constants ---
         self.max_travel_time = 3250.0
         self.max_capacity = 80
 
+        # --- Route handling ---
         self.real_routes = real_routes or {}
         self.route_metadata = route_metadata or {}
         self.agent_routes = {}
-        self.agents_per_route = 3 # Number of agents sharing the same route
+        self.agents_per_route = 3  # Number of agents sharing the same route
         self.fixed_agent_routes = None
 
-        self.metrics_file = "env_metrics.csv" # To log metrics for analysis
-
+        # --- Logging and metrics ---
+        self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
         self._printed_day_end = set()
+        self.last_logged_day = -1
+        self.episode_step_counter = 0  # Counts total environment steps per episode
 
-        self.simulated_days = 0  # how many full daily files have been processed
-        self.last_logged_day = -1  # internal flag to avoid duplicate prints
-        self.episode_step_counter = 0  # counts total environment steps per episode
-
-        if not os.path.exists(self.metrics_file): # Create the metrics file if it doesn't exist
+        # Create metrics file if it doesn't exist
+        if not os.path.exists(self.metrics_file):
             with open(self.metrics_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["episode", "env_steps", "mean_reward", "total_reward", "fairness"])
+        
+        # --- Fallback averages for missing daily data ---
+        self.avg_travel_time_AB_mean = avg_travel_time_AB or {} 
+        self.future_demand_at_B_mean = future_demand_at_B or {} 
+        self.occupancy_rate_mean = occupancy_rate or {}
+        self.uptime_normalized_mean = uptime_normalized or {}
 
 
     @property
@@ -155,33 +168,56 @@ class parallel_env(ParallelEnv):
         if seed is not None:
             self.np_random, _ = gym.utils.seeding.np_random(seed)
 
+        # --- Inicialização persistente ---
+        if not hasattr(self, "current_day_index"):
+            self.current_day_index = 0
+        if not hasattr(self, "simulated_days"):
+            self.simulated_days = 0
+        if not hasattr(self, "day_done"):
+            self.day_done = False
+        if not hasattr(self, "sim_done"):
+            self.sim_done = False
+
+        # --- Estruturas básicas ---
         self.agents = self.possible_agents[:]
+        self.agent_done = {a: False for a in self.possible_agents}
         self.states = {}
         self.targets = {}
         self.steps = {}
         self.delays = {}
         self.estimated_times = {}
         self.expected_times = {}
-        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # 6:00 AM
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # start at 6 AM every new day
         self.headways = {}
         self.sync_stats = {}
         self.agent_states = {}
         self.infos = {}
         observations = {}
 
-        # ✅ Increment simulated day if flagged to advance
-        if getattr(self, "_advance_day", False) and self.total_days > 0:
+        # --- Avança para o próximo dia se o anterior terminou ---
+        print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
+        print(f"📆 [ENV] Total days in simulation: {self.total_days}")
+        print(f"🔄 [ENV] Day done flag: {self.day_done}")
+        print(f"🗓️ [ENV] Total simulated days so far: {self.simulated_days}")
+
+        if (self.day_done or getattr(self, "agents_finished_previous_day", False)) and self.total_days > 0:
             self.current_day_index = (self.current_day_index + 1) % self.total_days
-            self.simulated_days += 1  # incrementa o contador de dias simulados
+            self.simulated_days += 1
             next_file = self.daily_files[self.current_day_index]
             next_date = next_file.replace("daily_data_", "").replace(".pkl", "")
-            print(f"\n🔁 [ENV] Switching to next day: {next_date} ({self.current_day_index + 1}/{self.total_days})")
+            print(f"\n🔁 [ENV] Advancing to next day: {next_date} ({self.current_day_index + 1}/{self.total_days})")
             print(f"📆 [ENV] Total simulated days so far: {self.simulated_days}")
-            self._advance_day = False
+            self.day_done = False  # reset flag
+            self.agents_finished_previous_day = False # reset flag
 
-        self.load_current_day_data()
+        # --- Carrega dados diários ---
+        try:
+            self.load_current_day_data()
+        except Exception as e:
+            print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
+            self._use_fallbacks()
 
-        # --- FIXED ROUTE INITIALIZATION ---
+        # --- Inicialização das rotas fixas (se ainda não houver) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
             self.fixed_agent_routes = {}
             num_agents = len(self.agents)
@@ -201,7 +237,6 @@ class parallel_env(ParallelEnv):
                     self.fixed_agent_routes[agent] = path
                 agent_idx += agents_per_route
 
-            # --- DEBUG PRINT (only once) ---
             print("\n=== [ROUTE ASSIGNMENT DEBUG - INITIALIZED ONCE] ===")
             for trip_id, path, assigned_agents in agent_routes_assignment:
                 route_preview = " → ".join(str(n) for n in path[:5])
@@ -211,10 +246,10 @@ class parallel_env(ParallelEnv):
                     f"Route length: {len(path):<3} | Path: {route_preview}")
             print("====================================================\n")
 
-        # --- Use the fixed routes every reset ---
+        # --- Usa sempre as rotas fixas ---
         self.agent_routes = self.fixed_agent_routes
 
-        # --- Initialize Agent States ---
+        # --- Inicializa estados de cada agente ---
         for agent in self.agents:
             if agent not in self.agent_routes:
                 raise ValueError(f"[RESET ERROR] Agent {agent} did not receive a route!")
@@ -235,6 +270,8 @@ class parallel_env(ParallelEnv):
                 "schedule": [],
                 "route": path,
                 "route_idx": 0,
+                "status": "active",  # 🚀 NOVO: estado inicial sempre ativo
+                "going_forward": True,
             }
 
             self.states[agent] = initial
@@ -273,296 +310,257 @@ class parallel_env(ParallelEnv):
             self.infos[agent] = {
                 "chosen_route": path,
                 "expected_time": self.expected_times[agent],
+                "status": "active",
             }
 
-        # --- Agent Episode Metrics ---
+        # --- Métricas de episódio ---
         self.current_episode_metrics = {
             "rewards": {agent: 0.0 for agent in self.agents},
             "steps": {agent: 0 for agent in self.agents},
             "done": False
         }
 
+        print("✅ [RESET COMPLETE] All agents initialized with status='active'.")
         return observations
     
     def step(self, actions):
-            if not actions:  # If there are no actions, return empty observations
-                self.agents = []
-                return {}, {}, {}, {}, {}  # Observations, rewards, terminations, truncations, infos
+        """
+        Executes a multi-agent simulation step.
+        Includes active PARK-blocking logic so agents can only park after 24h,
+        travel time clamping, and robust day-end handling.
+        """
 
-            observations = {}  # Observations for each agent
-            rewards = {}       # Rewards for each agent
-            terminations = {}  # Terminations for each agent
-            truncations = {}   # Truncations for each agent
-            infos = {}
+        # --- Output containers ---
+        observations = {}
+        rewards = {}
+        terminations = {}
+        truncations = {}
+        infos = {}
 
-            for agent in self.agents:  # Checks if the agent is active
-                self.steps[agent] += 1  # Increments the agent's step counter
-                state = self.agent_states[agent]  # Internal state of the agent
-                route = state["route"]  # Route of the agent
-                idx = state["route_idx"]  # Current index in the route
+        # Safety: ensure agent_states exists
+        if not hasattr(self, "agent_states"):
+            raise RuntimeError("agent_states not initialized. Call reset() before step().")
 
-                if idx >= len(route):  # Verifies if the agent has exceeded the route
-                    #print(f"[ERROR] Agent {agent} exceeded the route. IDX={idx}, LEN={len(route)}")
-                    terminations[agent] = True
-                    truncations[agent] = False
-                    rewards[agent] = -1.0
-                    continue
+        # Global limits
+        TRAVEL_TIME_CAP = 1800.0   # 30 minutes max per edge
+        PARK_TOLERANCE = 300.0     # 5 minutes tolerance for end-of-day parking
 
-                curr_node = route[idx]  # Current node of the agent
-                self.states[agent] = curr_node  # Ensures synchronization
+        # Loop through all possible agents (fixed set)
+        for agent in self.possible_agents:
+            state = self.agent_states[agent]
 
-                action = actions[agent]  # Action chosen by the agent
-                #print(f"[DEBUG] action: {action} for agent: {agent}")
+            # Skip parked agents
+            if state.get("status", "active") == "parked":
+                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
+                rewards[agent] = 0.0
+                terminations[agent] = False
+                truncations[agent] = False
+                infos[agent] = {"status": "parked"}
+                continue
 
-                # ================= WAIT =================
-                if action == 0:  
-                    reward = -0.1  # Penalty for waiting
-                    elapsed = 60.0  # Assume 1 minute of waiting
-                    self.agent_times[agent] += elapsed # Update agent's internal clock
-                    state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0)
-                    state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0)
-                    terminated = self.agent_times[agent] >= 24 * 3600
-                    truncated = False
+            # Get action (default = WAIT)
+            action = actions.get(agent, 0)
 
-                # ================= MOVE =================
-                elif action == 1:  
-                    going_forward = state.get("going_forward", True)
-                    route_length = len(route)
+            # 🚫 --- Prevent PARK before 24h ---
+            if action == 3 and self.agent_times[agent] < 24 * 3600:
+                print(f"🚫 [BLOCK] {agent} tried to PARK early at {self.agent_times[agent]/3600:.2f}h — forced WAIT.")
+                action = 0  # Force WAIT instead
+                early_park_penalty = -5.0
+            else:
+                early_park_penalty = 0.0
 
-                    if going_forward:
-                        if idx + 1 < route_length:
-                            next_node = route[idx + 1]
-                            self.agent_states[agent]["route_idx"] += 1
-                        else:
-                            state["going_forward"] = False
-                            self.agent_states[agent]["route_idx"] -= 1
-                            next_node = route[self.agent_states[agent]["route_idx"]]
-                    else:  
-                        if idx > 0:
-                            self.agent_states[agent]["route_idx"] -= 1
-                            next_node = route[self.agent_states[agent]["route_idx"]]
-                        else:
-                            state["going_forward"] = True
-                            self.agent_states[agent]["route_idx"] += 1
-                            next_node = route[self.agent_states[agent]["route_idx"]]
+            # --- Active agent ---
+            self.steps[agent] += 1
+            route = state["route"]
+            idx = state["route_idx"]
+            curr_node = route[idx]
 
-                    direction = "➡️ going forward" if state.get("going_forward", True) else "⬅️ going backward"
-                    #print(f"[MOVE] Agent {agent} | {direction} | {curr_node} -> {next_node} "
-                    #      f"(t={self.current_time/3600:.2f}h, occ={state.get('occupancy',0):.1f}, "
-                    #      f"fuel={state.get('fuel',0):.1f}, uptime={state.get('uptime',0):.2f})")
+            # === ACTION 0: WAIT ===
+            if action == 0:
+                reward = -0.1
+                elapsed = 60.0  # 1 minute wait
+                self.agent_times[agent] += elapsed
+                self.estimated_times[agent] += elapsed
+                state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0)
+                state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0)
 
-                    travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+            # === ACTION 1: MOVE ===
+            elif action == 1:
+                going_forward = state.get("going_forward", True)
+                route_length = len(route)
 
-                    prev_occ = state.get("occupancy", 0.0)
-                    if int(curr_node) in self.occupancy_rate:
-                        expected_occ = self.occupancy_rate[int(curr_node)]
-                        alpha = 0.5
-                        new_occ = (1 - alpha) * prev_occ + alpha * expected_occ
-                        occupancy = max(0.0, min(new_occ, 1.0))
-                        #print(f"[DEBUG] Expected Occupancy: {expected_occ:.2f}, Previous Occupancy: {prev_occ:.2f}, New Occupancy: {occupancy:.2f}")
+                if going_forward:
+                    if idx + 1 < route_length:
+                        next_node = route[idx + 1]
+                        self.agent_states[agent]["route_idx"] += 1
                     else:
-                        #print(f"[DEBUG] No Expected Occupancy for Node {curr_node}. Using Previous Occupancy: {prev_occ:.2f}")
-                        occupancy = prev_occ
-
-                    state["occupancy"] = occupancy
-                    self.agent_times[agent] += travel_time
-                    self.estimated_times[agent] += travel_time
-                    state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
-                    state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
-                    self.states[agent] = next_node
-
-                    if next_node not in self.headways:
-                        self.headways[next_node] = []
-                    self.headways[next_node].append(self.agent_times[agent])
-
-                    reward = self.reward.getReward(
-                        new_state=next_node,
-                        previous_state=curr_node,
-                        action=action,
-                        target=route[-1],
-                        network=self.network,
-                        estimated_time=self.estimated_times[agent],
-                        expected_time=self.expected_times[agent],
-                        delay=0,
-                        agent_state=state,
-                        headways=self.headways[next_node]
-                    )
-
-                    terminated = self.agent_times[agent] >= 24 * 3600
-                    truncated = self.steps[agent] >= self.max_steps
-
-                # ================= SERVICE CENTER =================
-                elif action == 2:  
-                    sc_node = self.get_nearest_service_center(curr_node)
-
-                    try:
-                        path = nx.shortest_path(
-                            self.network, source=curr_node, target=sc_node,
-                            weight=lambda u, v, d: self.avg_travel_time_AB.get((u, v), self.default_travel_time)
-                        )
-
-                        total_travel_time = 0.0
-                        total_fuel_cost = 0.0
-
-                        for u, v in zip(path[:-1], path[1:]):
-                            edge_time = self.avg_travel_time_AB.get((u, v), self.default_travel_time)
-                            edge_time *= 0.3
-                            total_travel_time += edge_time
-                            total_fuel_cost += edge_time / 300.0
-
-                        #print(f"[SERVICE_CENTER] Agent {agent} traveling path {path} "
-                        #      f"with total travel time={total_travel_time:.2f}, fuel cost={total_fuel_cost:.2f}")
-                    except nx.NetworkXNoPath:
-                        #print(f"[SERVICE_CENTER][ERROR] No path from {curr_node} to {sc_node}")
-                        reward = -10.0
-                        terminated = False
-                        truncated = False
-                    else:
-                        reward = 0.0
-                        if state["fuel"] > 0.8 and state["uptime"] > 0.8:
-                            reward -= 0.5 * total_travel_time  
-
-                        if state["fuel"] < total_fuel_cost:
-                            #print(f"[SERVICE_CENTER][FAIL] Agent {agent} insufficient fuel "
-                            #      f"({state['fuel']:.2f}) needs {total_fuel_cost:.2f}")
-                            reward = -20.0
-                        else:
-                            self.agent_times[agent] += total_travel_time
-                            self.estimated_times[agent] += total_travel_time
-                            state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
-                            state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
-
-                            state["fuel"] = 100.0
-                            state["uptime"] = 1.0
-                            state["maintenance_status"] = "ok"
-                            self.states[agent] = sc_node
-                            reward = -1.0 * (1 + total_travel_time / 600.0)
-
-                    terminated = self.agent_times[agent] >= 24 * 3600
-                    truncated = self.steps[agent] >= self.max_steps
-
+                        state["going_forward"] = False
+                        self.agent_states[agent]["route_idx"] -= 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
                 else:
-                    reward = -10.0
-                    terminated = False
-                    truncated = True
+                    if idx > 0:
+                        self.agent_states[agent]["route_idx"] -= 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
+                    else:
+                        state["going_forward"] = True
+                        self.agent_states[agent]["route_idx"] += 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
 
-                # ================= OBSERVATION UPDATE =================
-                route_idx = self.agent_states[agent]["route_idx"]
-                curr_node = self.states[agent]
-                next_node = route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
+                # Clamp travel time to avoid large jumps
+                travel_time_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+                travel_time = min(travel_time_raw, TRAVEL_TIME_CAP)
 
-                travel_time = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
-                normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
-                
-                #print(f"[STEP] agent: {agent}")
-                #print(f"[STEP] self.future_demand_at_B.get(next_node, 0.0): {self.future_demand_at_B.get(next_node, 0.0)}")
-                #print(f"[STEP]  self.agent_times[agent] : {self.agent_times[agent]}") 
-                #print(f"[STEP]  self.agent_times[agent] / (24 * 60 * 60): {self.agent_times[agent] / (24 * 60 * 60)}")
-                #print(f"[STEP]  normalized_travel_time: {normalized_travel_time}")
-                #print(f"[STEP]  self.occupancy_rate.get(curr_node, 0.0): {self.occupancy_rate.get(int(curr_node), 0.0)}")
-                #print(f"[STEP]  state['occupancy']: {state['occupancy']}")
-                #print(f"[STEP]  state['uptime']: {state['uptime']}")
-                #print(f"[STEP]  state['fuel']: {state['fuel']}")
-                #print(f"[STEP]  curr_node: {curr_node}")
-                #print(f"[STEP]  next_node: {next_node}")
-                #print(f"[STEP]  travel_time: {travel_time}")
-                #print(f"[STEP]  self.node_to_idx[str(curr_node)]: {self.node_to_idx[str(curr_node)]}")
-                #print(f"[STEP]  self.node_to_idx[str(next_node)]: {self.node_to_idx[str(next_node)]}")
+                self.agent_times[agent] += travel_time
+                self.estimated_times[agent] += travel_time
 
-                # 1. Crie o array de observação como antes
-                obs_array = np.array([
-                    self.agent_times[agent] / (24 * 60 * 60),
-                    state["occupancy"],
-                    normalized_travel_time,
-                    self.future_demand_at_B.get(next_node, 0.0),
-                    state["uptime"],
-                    1.0 if state["maintenance_status"] == "ok" else 0.0,
-                    self.node_to_idx[str(curr_node)],
-                    self.node_to_idx[str(next_node)],
-                ], dtype=np.float32)
+                # Update occupancy
+                prev_occ = state.get("occupancy", 0.0)
+                if int(curr_node) in self.occupancy_rate:
+                    expected_occ = self.occupancy_rate[int(curr_node)]
+                    alpha = 0.5
+                    occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
+                    occupancy = max(0.0, min(occupancy, 1.0))
+                else:
+                    occupancy = prev_occ
 
-                # APPLY CLIPPING HERE!
-                clipped_obs = np.clip(
-                    obs_array,
-                    self.observation_space(agent).low,
-                    self.observation_space(agent).high
+                state["occupancy"] = occupancy
+                state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
+
+                self.states[agent] = next_node
+
+                if next_node not in self.headways:
+                    self.headways[next_node] = []
+                self.headways[next_node].append(self.agent_times[agent])
+
+                reward = self.reward.getReward(
+                    new_state=next_node,
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=self.headways[next_node]
                 )
 
-                observations[agent] = clipped_obs
+            # === ACTION 2: SERVICE CENTER ===
+            elif action == 2:
+                sc_node = self.get_nearest_service_center(curr_node)
+                try:
+                    path = nx.shortest_path(
+                        self.network,
+                        source=curr_node,
+                        target=sc_node,
+                        weight=lambda u, v, d: self.avg_travel_time_AB.get((u, v), self.default_travel_time)
+                    )
 
-                rewards[agent] = reward
-                terminations[agent] = terminated
-                truncations[agent] = truncated
-                infos[agent] = {
-                    "count": self.steps[agent],
-                    "occupancy": state["occupancy"],
-                    "location": curr_node,
-                    "next_stop": next_node,
-                    "headways": self.headways.get(curr_node, []),
-                }
-                
-                if self.agent_times[agent] >= 24 * 3600:
-                    print(f"[END OF DAY] Simulation ended at {self.agent_times[agent]/3600:.2f}h (>= 24h).")
+                    total_travel_time = 0.0
+                    total_fuel_cost = 0.0
+                    for u, v in zip(path[:-1], path[1:]):
+                        edge_time_raw = self.avg_travel_time_AB.get((u, v), self.default_travel_time)
+                        edge_time = min(edge_time_raw, TRAVEL_TIME_CAP) * 0.3
+                        total_travel_time += edge_time
+                        total_fuel_cost += edge_time / 300.0
 
-            self.agents = [agent for agent in self.agents if not (terminations[agent] or truncations[agent])]
+                except nx.NetworkXNoPath:
+                    reward = -10.0
+                else:
+                    if state["fuel"] < total_fuel_cost:
+                        reward = -20.0
+                    else:
+                        self.agent_times[agent] += total_travel_time
+                        self.estimated_times[agent] += total_travel_time
+                        state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
+                        state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
+                        state["fuel"] = 100.0
+                        state["uptime"] = 1.0
+                        state["maintenance_status"] = "ok"
+                        self.states[agent] = sc_node
+                        reward = -1.0 * (1 + total_travel_time / 600.0)
 
-            # Update current episode metrics
-            total_reward = sum(rewards.values())
-            mean_reward = np.mean(list(rewards.values()))
+            # === ACTION 3: PARK ===
+            elif action == 3:
+                state["status"] = "parked"
+                reward = 0.0
+                infos[agent] = {"status": "parked", "reason": "manual_park"}
+                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
+                rewards[agent] = 0.0
+                terminations[agent] = False
+                truncations[agent] = False
+                continue
 
-            # Fairness (Gini coefficient sobre recompensas)
-            def gini(x):
-                if np.amin(x) < 0:
-                    x = np.array(x) - np.amin(x)  # shift values to be non-negative
-                x = np.sort(np.array(x))
-                n = len(x)
-                if n == 0:
-                    return 0.0
-                index = np.arange(1, n + 1)
-                return (np.sum((2 * index - n - 1) * x)) / (n * np.sum(x) + 1e-8)
+            # === INVALID ACTION ===
+            else:
+                reward = -10.0
 
-            fairness = 1 - gini(list(rewards.values())) if rewards else 0.0
+            # === End-of-day automatic parking (with tolerance) ===
+            if self.agent_times[agent] >= (24 * 3600 + PARK_TOLERANCE):
+                if state.get("status") != "parked":
+                    state["status"] = "parked"
+                    print(f"[END OF DAY - {agent}] reached {self.agent_times[agent]/3600:.2f}h → PARKED")
+                reward = 0.0
+                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
+                rewards[agent] = 0.0
+                terminations[agent] = False
+                truncations[agent] = False
+                infos[agent] = {"status": "parked", "reason": "24h_limit"}
+                continue
 
-            if not hasattr(self, "metrics_history"):  # Initialize metrics history if not present
-                self.metrics_history = []
-            
-            self.metrics_history.append({
-                "step": sum(self.steps.values()),  # Total steps taken by all agents
-                "total_reward": total_reward,
-                "mean_reward": mean_reward,
-                "fairness": fairness
-            })
+            # === Observation update ===
+            route_idx = self.agent_states[agent]["route_idx"]
+            curr_node = self.states[agent]
+            next_node = route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
 
-            # === save metrics on CSV ===
-            if not hasattr(self, "episode_counter"):
-                self.episode_counter = 0
-            self.episode_counter += 1
+            tt_next_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+            tt_next = min(tt_next_raw, TRAVEL_TIME_CAP)
+            normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
 
-            env_steps = sum(self.steps.values())
-            with open(self.metrics_file, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    self.episode_counter,
-                    env_steps,
-                    mean_reward,
-                    total_reward,
-                    fairness
-                ])
+            obs_array = np.array([
+                self.agent_times[agent] / (24 * 60 * 60),
+                state["occupancy"],
+                normalized_travel_time,
+                self.future_demand_at_B.get(next_node, 0.0),
+                state["uptime"],
+                1.0 if state["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[str(curr_node)],
+                self.node_to_idx[str(next_node)],
+            ], dtype=np.float32)
 
+            observations[agent] = np.clip(
+                obs_array,
+                self.observation_space(agent).low,
+                self.observation_space(agent).high
+            )
 
-            # fusing terminations + truncations → dones
-            dones = {a: (terminations[a] or truncations[a]) for a in rewards}
-            dones["__all__"] = all(dones.values())
+            # Add early PARK penalty if applicable
+            reward += early_park_penalty
 
-            for agent in self.agents: # Add episode reward and fairness to infos
-                infos[agent] = {
-                    **infos.get(agent, {}),
-                    "episode_reward": rewards[agent],
-                    "mean_reward_episode": mean_reward,
-                    "fairness": fairness
-                }
+            rewards[agent] = reward
+            terminations[agent] = False
+            truncations[agent] = False
+            infos[agent] = {"status": "active"}
 
-            return observations, rewards, dones, infos
+        # === Global post-processing ===
+        all_parked = all(self.agent_states[a]["status"] == "parked" for a in self.possible_agents)
+
+        dones = {a: all_parked for a in self.possible_agents}
+        dones["__all__"] = all_parked
+
+        if all_parked:
+            print("🌙 [ENV] All agents parked — day finished. Awaiting reset() to advance to next day.")
+            self.day_done = True
+            self.agents_finished_previous_day = True
+        else:
+            self.day_done = False
+
+        print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
+            f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
+            f"| Done flag: {all_parked}")
+
+        return observations, rewards, dones, infos
 
 
 
@@ -642,9 +640,10 @@ class parallel_env(ParallelEnv):
         return self.service_center_node
     
     def load_current_day_data(self):
-        """Loads the data for the current day and falls back to averages if necessary"""
+        """Loads the data for the current day and falls back to averages if necessary."""
         if self.total_days == 0:
             print("⚠️ No daily data files found. Using default averages.")
+            self._use_fallbacks()
             return
 
         file_path = os.path.join(self.daily_data_path, self.daily_files[self.current_day_index])
@@ -654,21 +653,31 @@ class parallel_env(ParallelEnv):
         print(f"\n📅 [ENV] Loading daily data for {day_data.get('date', 'unknown')} "
             f"({self.current_day_index + 1}/{self.total_days})")
 
-        # Fallbacks individually
+        # Load with fallback preservation
         self.avg_travel_time_AB = day_data.get("avg_travel_times", self.avg_travel_time_AB)
         self.future_demand_at_B = day_data.get("future_demand", self.future_demand_at_B)
         self.occupancy_rate = day_data.get("occupancy_rate", self.occupancy_rate)
         self.uptime_normalized = day_data.get("uptime_normalized", self.uptime_normalized)
 
-        # Verifica se alguma estrutura está vazia e aplica fallback
-        if not self.avg_travel_time_AB:
-            self.avg_travel_time_AB = self.avg_travel_time_AB
-        if not self.future_demand_at_B:
-            self.future_demand_at_B = self.future_demand_at_B
-        if not self.occupancy_rate:
-            self.occupancy_rate = self.occupancy_rate
-        if not self.uptime_normalized:
-            self.uptime_normalized = self.uptime_normalized
+        # Apply explicit fallbacks when missing
+        self._use_fallbacks()
+
+
+    def _use_fallbacks(self):
+        """Applies average fallback values where data is missing."""
+        if not getattr(self, "avg_travel_time_AB", None):
+            self.avg_travel_time_AB = self.avg_travel_time_AB_mean
+            print("⚠️ Using fallback avg_travel_time_AB_mean")
+        if not getattr(self, "future_demand_at_B", None):
+            self.future_demand_at_B = self.future_demand_at_B_mean
+            print("⚠️ Using fallback future_demand_at_B_mean")
+        if not getattr(self, "occupancy_rate", None):
+            self.occupancy_rate = self.occupancy_rate_mean
+            print("⚠️ Using fallback occupancy_rate_mean")
+        if not getattr(self, "uptime_normalized", None):
+            self.uptime_normalized = self.uptime_normalized_mean
+            print("⚠️ Using fallback uptime_normalized_mean")
+
 
 # This is the base class for reward classes
 class RewardBaseClass():

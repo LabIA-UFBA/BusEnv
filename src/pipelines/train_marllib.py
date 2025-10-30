@@ -90,9 +90,9 @@ class RLlibSuntBus(MultiAgentEnv):
         # Create parallel env
         self.env = parallel_env(
             network=G,
-            actions_amount=3,
+            actions_amount=4,
             max_steps=1000,
-            num_agents=2,
+            num_agents=3,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
