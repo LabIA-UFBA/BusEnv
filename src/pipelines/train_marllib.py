@@ -92,7 +92,7 @@ class RLlibSuntBus(MultiAgentEnv):
             network=G,
             actions_amount=4,
             max_steps=1000,
-            num_agents=3,
+            num_agents=11,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
@@ -305,7 +305,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 10000},  # adjust as needed
+        "stop": {"timesteps_total": 500000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 0,     # adjust as needed

@@ -70,6 +70,17 @@ class parallel_env(ParallelEnv):
         self.headways = {}
         self.sync_stats = {}
 
+        # --- Agent presence tracking ---
+        # Maps each node (stop) to the list of agents currently there
+        self.node_occupancy = {}  
+
+        # Stores last known positions of all agents (to detect proximity changes)
+        self.agent_positions = {agent: None for agent in self.possible_agents}
+
+        # Threshold (in seconds) for spacing between agents in the same route
+        self.min_headway_time = 300.0  # 5 minutes minimum gap between agents on same route
+
+
         self.service_center_node = random.choice(list(self.network.nodes))
 
         # --- Internal structure of agents ---
@@ -140,6 +151,14 @@ class parallel_env(ParallelEnv):
         self.agents_per_route = 3  # Number of agents sharing the same route
         self.fixed_agent_routes = None
 
+        # --- Coordination control for agents on same route ---
+        # Stores the last time an agent from each route advanced (for coordination)
+        self.route_last_move_time = {}
+
+        # Controls which agent is the "leader" on each route (the first to move)
+        self.route_leader = {}
+
+
         # --- Logging and metrics ---
         self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
         self._printed_day_end = set()
@@ -194,7 +213,14 @@ class parallel_env(ParallelEnv):
         self.infos = {}
         observations = {}
 
-        # --- Avança para o próximo dia se o anterior terminou ---
+        # --- Reset agent coordination and presence tracking ---
+        self.node_occupancy = {node: [] for node in self.network.nodes}  # which agents are currently at each node
+        self.agent_positions = {agent: None for agent in self.possible_agents}
+        self.route_last_move_time = {route_id: 0.0 for route_id in self.real_routes.keys()}
+        self.route_leader = {}  # will be updated dynamically in step()
+
+
+        # --- Move on to the next day if the previous one has ended ---
         print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
         print(f"📆 [ENV] Total days in simulation: {self.total_days}")
         print(f"🔄 [ENV] Day done flag: {self.day_done}")
@@ -270,9 +296,23 @@ class parallel_env(ParallelEnv):
                 "schedule": [],
                 "route": path,
                 "route_idx": 0,
-                "status": "active",  # 🚀 NOVO: estado inicial sempre ativo
+                "status": "active",
                 "going_forward": True,
             }
+
+            # --- Register initial position for coordination ---
+            self.agent_positions[agent] = initial
+            if initial not in self.node_occupancy:
+                self.node_occupancy[initial] = []
+            self.node_occupancy[initial].append(agent)
+
+            # If this is the first agent on this route, mark as leader
+            route_id = [k for k, v in self.real_routes.items() if v == path]
+            if route_id:
+                rid = route_id[0]
+                if rid not in self.route_leader:
+                    self.route_leader[rid] = agent
+
 
             self.states[agent] = initial
             self.targets[agent] = target
@@ -320,6 +360,10 @@ class parallel_env(ParallelEnv):
             "done": False
         }
 
+        # --- Debug: presence summary ---
+        active_points = {node: agents for node, agents in self.node_occupancy.items() if agents}
+        print(f"📍 [RESET DEBUG] Agent initial positions per node: {active_points}")
+
         print("✅ [RESET COMPLETE] All agents initialized with status='active'.")
         return observations
     
@@ -344,6 +388,17 @@ class parallel_env(ParallelEnv):
         # Global limits
         TRAVEL_TIME_CAP = 1800.0   # 30 minutes max per edge
         PARK_TOLERANCE = 300.0     # 5 minutes tolerance for end-of-day parking
+
+        # --- Reset dynamic presence tracking for this step ---
+        for node in self.node_occupancy:
+            self.node_occupancy[node] = []  # clear per-step occupancy
+
+        if self.episode_step_counter % 100 == 0:
+            print(f"[DEBUG] Step {self.episode_step_counter}: Cleared node_occupancy map.")
+
+        # Record latest positions as we go
+        step_node_positions = {}
+
 
         # Loop through all possible agents (fixed set)
         for agent in self.possible_agents:
@@ -496,6 +551,44 @@ class parallel_env(ParallelEnv):
             else:
                 reward = -10.0
 
+            # Presence and coordination tracking
+            current_pos = self.states[agent]
+            self.agent_positions[agent] = current_pos
+
+            if current_pos not in self.node_occupancy:
+                self.node_occupancy[current_pos] = []
+            self.node_occupancy[current_pos].append(agent)
+
+            if len(self.node_occupancy[current_pos]) > 1: # Shows when two or more agents are at the same point, useful for validating the overlap_penalty
+                print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
+
+
+            route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
+            if route_id:
+                rid = route_id[0]
+                self.route_last_move_time[rid] = self.agent_times[agent]
+
+            # Penalize overlap (agents sharing same stop)
+            same_stop_agents = [
+                a for a in self.node_occupancy.get(current_pos, []) if a != agent
+            ]
+            if same_stop_agents:
+                overlap_penalty = -0.5 * len(same_stop_agents)
+                reward += overlap_penalty
+                print(f"[DEBUG] {agent} penalized {overlap_penalty:.2f} for sharing stop {current_pos} with {same_stop_agents}")
+ 
+
+            # Penalize small headway (too close to leader)
+            if route_id:
+                rid = route_id[0]
+                leader = self.route_leader.get(rid)
+                if leader and leader != agent:
+                    time_diff = abs(self.agent_times[agent] - self.route_last_move_time.get(rid, 0.0))
+                    if time_diff < self.min_headway_time:
+                        headway_penalty = - (1.0 - (time_diff / self.min_headway_time))
+                        reward += headway_penalty
+                        print(f"[DEBUG] {agent} penalized {headway_penalty:.2f} for short headway ({time_diff:.1f}s) behind leader {leader}")
+
             # === End-of-day automatic parking (with tolerance) ===
             if self.agent_times[agent] >= (24 * 3600 + PARK_TOLERANCE):
                 if state.get("status") != "parked":
@@ -543,6 +636,14 @@ class parallel_env(ParallelEnv):
             truncations[agent] = False
             infos[agent] = {"status": "active"}
 
+            # Update route leader dynamically
+            if route_id:
+                rid = route_id[0]
+                leader = self.route_leader.get(rid)
+                if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
+                    self.route_leader[rid] = agent
+                    print(f"[DEBUG] {agent} is now leader of route {rid}")
+
         # === Global post-processing ===
         all_parked = all(self.agent_states[a]["status"] == "parked" for a in self.possible_agents)
 
@@ -556,6 +657,11 @@ class parallel_env(ParallelEnv):
         else:
             self.day_done = False
 
+        if self.episode_step_counter % 50 == 0:
+            active_nodes = {node: ags for node, ags in self.node_occupancy.items() if ags}
+            print(f"[DEBUG] Node occupancy snapshot: {active_nodes}")
+
+        
         print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
             f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
             f"| Done flag: {all_parked}")

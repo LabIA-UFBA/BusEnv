@@ -1,7 +1,7 @@
 import pickle
 
 # Path where files were saved
-pkl_path = "src/training_observation"
+pkl_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation"
 
 # Load the files
 with open(f"{pkl_path}/real_routes.pkl", "rb") as f:
@@ -19,5 +19,5 @@ for i, (trip_id, stops) in enumerate(real_routes.items()):
     meta = route_metadata.get(trip_id, {})
     print("Metadata:", meta)
 
-    if i >= 4:  # Limit to show only the first 5
+    if i >= 40:  # Limit to show only the first 5
         break
