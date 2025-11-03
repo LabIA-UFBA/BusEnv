@@ -420,7 +420,7 @@ class parallel_env(ParallelEnv):
             if action == 3 and self.agent_times[agent] < 24 * 3600:
                 print(f"🚫 [BLOCK] {agent} tried to PARK early at {self.agent_times[agent]/3600:.2f}h — forced WAIT.")
                 action = 0  # Force WAIT instead
-                early_park_penalty = -5.0
+                early_park_penalty = -3.0 # Penalty for trying to park early
             else:
                 early_park_penalty = 0.0
 
@@ -559,35 +559,13 @@ class parallel_env(ParallelEnv):
                 self.node_occupancy[current_pos] = []
             self.node_occupancy[current_pos].append(agent)
 
-            if len(self.node_occupancy[current_pos]) > 1: # Shows when two or more agents are at the same point, useful for validating the overlap_penalty
+            if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
                 print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
-
 
             route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
             if route_id:
                 rid = route_id[0]
                 self.route_last_move_time[rid] = self.agent_times[agent]
-
-            # Penalize overlap (agents sharing same stop)
-            same_stop_agents = [
-                a for a in self.node_occupancy.get(current_pos, []) if a != agent
-            ]
-            if same_stop_agents:
-                overlap_penalty = -0.5 * len(same_stop_agents)
-                reward += overlap_penalty
-                print(f"[DEBUG] {agent} penalized {overlap_penalty:.2f} for sharing stop {current_pos} with {same_stop_agents}")
- 
-
-            # Penalize small headway (too close to leader)
-            if route_id:
-                rid = route_id[0]
-                leader = self.route_leader.get(rid)
-                if leader and leader != agent:
-                    time_diff = abs(self.agent_times[agent] - self.route_last_move_time.get(rid, 0.0))
-                    if time_diff < self.min_headway_time:
-                        headway_penalty = - (1.0 - (time_diff / self.min_headway_time))
-                        reward += headway_penalty
-                        print(f"[DEBUG] {agent} penalized {headway_penalty:.2f} for short headway ({time_diff:.1f}s) behind leader {leader}")
 
             # === End-of-day automatic parking (with tolerance) ===
             if self.agent_times[agent] >= (24 * 3600 + PARK_TOLERANCE):
