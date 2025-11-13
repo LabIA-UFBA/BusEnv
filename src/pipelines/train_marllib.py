@@ -305,7 +305,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 1000},  # adjust as needed
+        "stop": {"timesteps_total": 1000000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 0,     # adjust as needed

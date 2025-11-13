@@ -27,7 +27,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("ia2c")
+algos=("maa2c")
 
 # Funcionaram 100%
 # IA2C 
@@ -59,20 +59,27 @@ for run in $(seq 1 "${runs_per_algo}"); do
   
   # Executa todos os algoritmos em paralelo nesta rodada
   for algo in "${algos[@]}"; do
-    run_id="run${run}"
-    log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-    echo "Lançando: ${algo} (Run ${run}) -> ${log_file}"
+      # Encontrar o próximo número disponível de log para este algoritmo
+      next_run=1
+      while [[ -f "${LOG_DIR}/${algo}_run${next_run}.log" ]]; do
+          next_run=$((next_run + 1))
+      done
 
-    nohup python "${TRAIN_SCRIPT}" \
-      --algo "${algo}" \
-      --cc-run-id "${algo}-${run_id}" \
-      --cc-output-dir "${CC_OUTDIR}" \
-      > "${log_file}" 2>&1 &
+      run_id="run${next_run}"
+      log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-    # Pequeno atraso para não iniciar tudo no mesmo instante
-    sleep 2
+      echo "Lançando: ${algo} -> ${log_file}"
+
+      nohup python "${TRAIN_SCRIPT}" \
+        --algo "${algo}" \
+        --cc-run-id "${algo}-${run_id}" \
+        --cc-output-dir "${CC_OUTDIR}" \
+        > "${log_file}" 2>&1 &
+
+      sleep 2
   done
+
 
   # Espera todos os algoritmos desta rodada terminarem antes da próxima
   echo "⏳ Aguardando finalização da rodada ${run}..."

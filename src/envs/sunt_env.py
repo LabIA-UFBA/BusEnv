@@ -125,7 +125,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -416,8 +416,8 @@ class parallel_env(ParallelEnv):
         for node in self.node_occupancy:
             self.node_occupancy[node] = []  # clear per-step occupancy
 
-        if self.episode_step_counter % 100 == 0:
-            print(f"[DEBUG] Step {self.episode_step_counter}: Cleared node_occupancy map.")
+        #if self.episode_step_counter % 100 == 0:
+            #print(f"[DEBUG] Step {self.episode_step_counter}: Cleared node_occupancy map.")
 
         # Record latest positions as we go
         step_node_positions = {}
@@ -586,8 +586,8 @@ class parallel_env(ParallelEnv):
                 self.node_occupancy[current_pos] = []
             self.node_occupancy[current_pos].append(agent)
 
-            if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
-                print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
+            #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
+               # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
 
             route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
             if route_id:
@@ -598,7 +598,7 @@ class parallel_env(ParallelEnv):
             if self.agent_times[agent] >= (24 * 3600 + PARK_TOLERANCE):
                 if state.get("status") != "parked":
                     state["status"] = "parked"
-                    print(f"[END OF DAY - {agent}] reached {self.agent_times[agent]/3600:.2f}h → PARKED")
+                    #print(f"[END OF DAY - {agent}] reached {self.agent_times[agent]/3600:.2f}h → PARKED")
                 reward = 0.0
                 observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
                 rewards[agent] = 0.0
@@ -647,7 +647,7 @@ class parallel_env(ParallelEnv):
                 leader = self.route_leader.get(rid)
                 if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
                     self.route_leader[rid] = agent
-                    print(f"[DEBUG] {agent} is now leader of route {rid}")
+                    #print(f"[DEBUG] {agent} is now leader of route {rid}")
 
         # === Global post-processing ===
         all_parked = all(self.agent_states[a]["status"] == "parked" for a in self.possible_agents)
@@ -664,12 +664,12 @@ class parallel_env(ParallelEnv):
 
         if self.episode_step_counter % 50 == 0:
             active_nodes = {node: ags for node, ags in self.node_occupancy.items() if ags}
-            print(f"[DEBUG] Node occupancy snapshot: {active_nodes}")
+            #print(f"[DEBUG] Node occupancy snapshot: {active_nodes}")
 
         
-        print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
-            f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
-            f"| Done flag: {all_parked}")
+        #print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
+        #    f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
+        #    f"| Done flag: {all_parked}")
 
         return observations, rewards, dones, infos
 
