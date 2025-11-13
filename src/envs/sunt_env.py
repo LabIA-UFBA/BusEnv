@@ -236,32 +236,55 @@ class parallel_env(ParallelEnv):
             self.day_done = False  # reset flag
             self.agents_finished_previous_day = False # reset flag
 
-        # --- Carrega dados diários ---
+        # --- Loads daily data ---
         try:
             self.load_current_day_data()
         except Exception as e:
             print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
             self._use_fallbacks()
 
-        # --- Inicialização das rotas fixas (se ainda não houver) ---
+        # --- Initialization of fixed routes (if they don't already exist) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
             self.fixed_agent_routes = {}
             num_agents = len(self.agents)
             routes = list(self.real_routes.items())
-            num_routes = len(routes)
-            agents_per_route = getattr(self, "agents_per_route", 1)
+
+            # CHANGE: function to decide number of agents per route (based on length)
+            def _agents_for_path(path_len: int, default_agents: int) -> int:
+                if path_len < 15:
+                    return 1
+                if path_len <= 30:
+                    return 2
+                # >30 uses the user's default (ensures >=1)
+                return max(1, int(default_agents))
+
+            default_agents_per_route = getattr(self, "agents_per_route", 1)
 
             agent_routes_assignment = []
             agent_idx = 0
 
-            for i, (trip_id, path) in enumerate(routes):
+            # CHANGE: dynamic allocation based on route length
+            for trip_id, path in routes:
                 if agent_idx >= num_agents:
                     break
-                assigned_agents = self.agents[agent_idx:agent_idx + agents_per_route]
+
+                k = _agents_for_path(len(path), default_agents_per_route)
+                # does not exceed the total remaining agents
+                k = min(k, num_agents - agent_idx)
+                if k <= 0:
+                    break
+
+                assigned_agents = self.agents[agent_idx:agent_idx + k]
                 agent_routes_assignment.append((trip_id, path, assigned_agents))
+
                 for agent in assigned_agents:
                     self.fixed_agent_routes[agent] = path
-                agent_idx += agents_per_route
+
+                # DEBUG: show decision per route
+                route_preview = " → ".join(str(n) for n in path[:5]) + (" → ..." if len(path) > 5 else "")
+                print(f"[ROUTE SPLIT] trip={trip_id} | len={len(path)} | assigned={k} | agents={', '.join(assigned_agents)} | path={route_preview}")
+
+                agent_idx += k
 
             print("\n=== [ROUTE ASSIGNMENT DEBUG - INITIALIZED ONCE] ===")
             for trip_id, path, assigned_agents in agent_routes_assignment:
@@ -269,7 +292,7 @@ class parallel_env(ParallelEnv):
                 if len(path) > 5:
                     route_preview += " → ..."
                 print(f"Trip ID: {trip_id:<10} | Agents: {', '.join(assigned_agents)} | "
-                    f"Route length: {len(path):<3} | Path: {route_preview}")
+                      f"Route length: {len(path):<3} | Path: {route_preview}")
             print("====================================================\n")
 
         # --- Usa sempre as rotas fixas ---
@@ -417,12 +440,16 @@ class parallel_env(ParallelEnv):
             action = actions.get(agent, 0)
 
             # 🚫 --- Prevent PARK before 24h ---
+            # Substitua o bloco do PARK cedo
             if action == 3 and self.agent_times[agent] < 24 * 3600:
-                print(f"🚫 [BLOCK] {agent} tried to PARK early at {self.agent_times[agent]/3600:.2f}h — forced WAIT.")
-                action = 0  # Force WAIT instead
-                early_park_penalty = -3.0 # Penalty for trying to park early
+                hours = self.agent_times[agent] / 3600.0
+                # penaliza forte no começo, zera ao se aproximar de 24h
+                scale = np.clip((24.0 - hours) / 24.0, 0.0, 1.0)
+                early_park_penalty = -0.5 * float(scale)   # ex: no máximo -0.5
+                action = 0  # força WAIT
             else:
                 early_park_penalty = 0.0
+
 
             # --- Active agent ---
             self.steps[agent] += 1
