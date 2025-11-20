@@ -90,7 +90,7 @@ class RLlibSuntBus(MultiAgentEnv):
         # Create parallel env
         self.env = parallel_env(
             network=G,
-            actions_amount=4,
+            actions_amount=3,
             max_steps=1000,
             num_agents=30,
             avg_travel_time_AB=avg_travel_time_AB,
@@ -305,7 +305,7 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 1000000},  # adjust as needed
+        "stop": {"timesteps_total": 10000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
         "num_workers": 0,     # adjust as needed

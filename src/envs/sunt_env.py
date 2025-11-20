@@ -125,7 +125,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_data_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -410,7 +410,7 @@ class parallel_env(ParallelEnv):
 
         # Global limits
         TRAVEL_TIME_CAP = 1800.0   # 30 minutes max per edge
-        PARK_TOLERANCE = 300.0     # 5 minutes tolerance for end-of-day parking
+        END_OF_DAY = 24 * 3600.0      # End of the day in seconds
 
         # --- Reset dynamic presence tracking for this step ---
         for node in self.node_occupancy:
@@ -427,29 +427,17 @@ class parallel_env(ParallelEnv):
         for agent in self.possible_agents:
             state = self.agent_states[agent]
 
-            # Skip parked agents
-            if state.get("status", "active") == "parked":
+            # Skip finished agents
+            if state.get("status") == "finished":
                 observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
                 rewards[agent] = 0.0
                 terminations[agent] = False
                 truncations[agent] = False
-                infos[agent] = {"status": "parked"}
+                infos[agent] = {"status": "finished"}
                 continue
 
             # Get action (default = WAIT)
             action = actions.get(agent, 0)
-
-            # 🚫 --- Prevent PARK before 24h ---
-            # Substitua o bloco do PARK cedo
-            if action == 3 and self.agent_times[agent] < 24 * 3600:
-                hours = self.agent_times[agent] / 3600.0
-                # penaliza forte no começo, zera ao se aproximar de 24h
-                scale = np.clip((24.0 - hours) / 24.0, 0.0, 1.0)
-                early_park_penalty = -0.5 * float(scale)   # ex: no máximo -0.5
-                action = 0  # força WAIT
-            else:
-                early_park_penalty = 0.0
-
 
             # --- Active agent ---
             self.steps[agent] += 1
@@ -563,17 +551,6 @@ class parallel_env(ParallelEnv):
                         self.states[agent] = sc_node
                         reward = -1.0 * (1 + total_travel_time / 600.0)
 
-            # === ACTION 3: PARK ===
-            elif action == 3:
-                state["status"] = "parked"
-                reward = 0.0
-                infos[agent] = {"status": "parked", "reason": "manual_park"}
-                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
-                rewards[agent] = 0.0
-                terminations[agent] = False
-                truncations[agent] = False
-                continue
-
             # === INVALID ACTION ===
             else:
                 reward = -10.0
@@ -594,17 +571,14 @@ class parallel_env(ParallelEnv):
                 rid = route_id[0]
                 self.route_last_move_time[rid] = self.agent_times[agent]
 
-            # === End-of-day automatic parking (with tolerance) ===
-            if self.agent_times[agent] >= (24 * 3600 + PARK_TOLERANCE):
-                if state.get("status") != "parked":
-                    state["status"] = "parked"
-                    #print(f"[END OF DAY - {agent}] reached {self.agent_times[agent]/3600:.2f}h → PARKED")
-                reward = 0.0
+            # === End-of-day to agents, putting the finished status ===
+            if self.agent_times[agent] >= END_OF_DAY:
+                state["status"] = "finished"
                 observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
                 rewards[agent] = 0.0
                 terminations[agent] = False
                 truncations[agent] = False
-                infos[agent] = {"status": "parked", "reason": "24h_limit"}
+                infos[agent] = {"status": "finished", "reason": "24h_limit"}
                 continue
 
             # === Observation update ===
@@ -633,9 +607,6 @@ class parallel_env(ParallelEnv):
                 self.observation_space(agent).high
             )
 
-            # Add early PARK penalty if applicable
-            reward += early_park_penalty
-
             rewards[agent] = reward
             terminations[agent] = False
             truncations[agent] = False
@@ -650,13 +621,13 @@ class parallel_env(ParallelEnv):
                     #print(f"[DEBUG] {agent} is now leader of route {rid}")
 
         # === Global post-processing ===
-        all_parked = all(self.agent_states[a]["status"] == "parked" for a in self.possible_agents)
+        all_finished = all(self.agent_times[a] >= END_OF_DAY for a in self.possible_agents)
 
-        dones = {a: all_parked for a in self.possible_agents}
-        dones["__all__"] = all_parked
+        dones = {a: all_finished for a in self.possible_agents}
+        dones["__all__"] = all_finished
 
-        if all_parked:
-            print("🌙 [ENV] All agents parked — day finished. Awaiting reset() to advance to next day.")
+        if all_finished:
+            print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
             self.day_done = True
             self.agents_finished_previous_day = True
         else:
