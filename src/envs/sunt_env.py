@@ -22,8 +22,8 @@ class parallel_env(ParallelEnv):
     # avg_travel_time_AB, future_demand_at_B, occupancy_rate, uptime_normalized: dicts with precomputed data
     # real_routes: dict mapping agent_id to a fixed route (list of nodes)
     # route_metadata: dict with metadata for each route (optional)
-    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2,
-                stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, agents_per_route=None,
+                use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
                 real_routes=None, route_metadata=None):  
@@ -125,7 +125,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -148,7 +148,7 @@ class parallel_env(ParallelEnv):
         self.real_routes = real_routes or {}
         self.route_metadata = route_metadata or {}
         self.agent_routes = {}
-        self.agents_per_route = 3  # Number of agents sharing the same route
+        self.agents_per_route = agents_per_route  # Number of agents sharing the same route
         self.fixed_agent_routes = None
 
         # --- Coordination control for agents on same route ---
@@ -164,6 +164,9 @@ class parallel_env(ParallelEnv):
         self._printed_day_end = set()
         self.last_logged_day = -1
         self.episode_step_counter = 0  # Counts total environment steps per episode
+        
+        
+        self.use_only_mean_data = use_only_mean_data   # 0 = use only mean data, 1 = use daily data
 
         # Create metrics file if it doesn't exist
         if not os.path.exists(self.metrics_file):
@@ -254,7 +257,7 @@ class parallel_env(ParallelEnv):
                 if path_len < 15:
                     return 1
                 if path_len <= 30:
-                    return 2
+                    return 1 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -447,7 +450,7 @@ class parallel_env(ParallelEnv):
 
             # === ACTION 0: WAIT ===
             if action == 0:
-                reward = -0.1
+                reward = -0.1 # Antes era  -0.1
                 elapsed = 60.0  # 1 minute wait
                 self.agent_times[agent] += elapsed
                 self.estimated_times[agent] += elapsed
@@ -536,10 +539,13 @@ class parallel_env(ParallelEnv):
                         total_fuel_cost += edge_time / 300.0
 
                 except nx.NetworkXNoPath:
-                    reward = -10.0
+                    reward = -10# antes era -10.0
                 else:
                     if state["fuel"] < total_fuel_cost:
-                        reward = -20.0
+                        reward = -20 # em vez de -20
+                        print("total_fuel_cost: ", total_fuel_cost)
+                        print("state[fuel]: ", state["fuel"])
+                        print("VEIO PRO SERVICE CENTER SEM CONDIÇÃO DE CHEGAR")
                     else:
                         self.agent_times[agent] += total_travel_time
                         self.estimated_times[agent] += total_travel_time
@@ -549,7 +555,8 @@ class parallel_env(ParallelEnv):
                         state["uptime"] = 1.0
                         state["maintenance_status"] = "ok"
                         self.states[agent] = sc_node
-                        reward = -1.0 * (1 + total_travel_time / 600.0)
+                        reward = -1.0 * (1 + total_travel_time / 600.0) # antes era -1.0 * 
+                        #reward = 0
 
             # === INVALID ACTION ===
             else:
@@ -723,6 +730,12 @@ class parallel_env(ParallelEnv):
     
     def load_current_day_data(self):
         """Loads the data for the current day and falls back to averages if necessary."""
+
+        if getattr(self, "use_only_mean_data", 0) == 1:
+            print("📘 [ENV] Using ONLY MEAN DATA (daily files ignored).")
+            self._load_mean_values()
+            return
+
         if self.total_days == 0:
             print("⚠️ No daily data files found. Using default averages.")
             self._use_fallbacks()
@@ -744,6 +757,17 @@ class parallel_env(ParallelEnv):
         # Apply explicit fallbacks when missing
         self._use_fallbacks()
 
+    def _load_mean_values(self):
+        """ Always forces the environment to use only mean values """
+        self.avg_travel_time_AB = self.avg_travel_time_AB_mean
+        self.future_demand_at_B = self.future_demand_at_B_mean
+        self.occupancy_rate = self.occupancy_rate_mean
+        self.uptime_normalized = self.uptime_normalized_mean
+
+        print("⚠️ [ENV] Mean travel times loaded.")
+        print("⚠️ [ENV] Mean future demand loaded.")
+        print("⚠️ [ENV] Mean occupancy rate loaded.")
+        print("⚠️ [ENV] Mean uptime normalized loaded.")
 
     def _use_fallbacks(self):
         """Applies average fallback values where data is missing."""
