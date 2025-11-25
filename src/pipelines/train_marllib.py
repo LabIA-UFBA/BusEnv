@@ -307,14 +307,12 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 500000},  # adjust as needed
+        "stop": {"timesteps_total": 400000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 10,     # adjust as needed
+        "num_workers": 35,     # adjust as needed
         "share_policy": "individual",
     }
-
-
 
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)

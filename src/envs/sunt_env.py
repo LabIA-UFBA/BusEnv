@@ -450,7 +450,7 @@ class parallel_env(ParallelEnv):
 
             # === ACTION 0: WAIT ===
             if action == 0:
-                reward = -0.1 # Antes era  -0.1
+                reward = 0 # Antes era  -0.1
                 elapsed = 60.0  # 1 minute wait
                 self.agent_times[agent] += elapsed
                 self.estimated_times[agent] += elapsed
@@ -497,10 +497,26 @@ class parallel_env(ParallelEnv):
                     occupancy = prev_occ
 
                 state["occupancy"] = occupancy
-                state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                # state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                travel_time_hors = travel_time / (12 * 3600)
+                state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
                 state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
 
                 self.states[agent] = next_node
+
+                """
+                # --- DEBUG AQUI ---
+                total_sec = int(self.agent_times[agent])
+                hours = total_sec // 3600
+                minutes = (total_sec % 3600) // 60
+
+                print(
+                    f"[DEBUG][{agent}] time={hours:02d}:{minutes:02d} | "
+                    f"estimated_time={self.estimated_times[agent]:.1f} | "
+                    f"expected_time={self.expected_times[agent]:.1f} | "
+                    f"node={next_node}"
+                )
+                """
 
                 if next_node not in self.headways:
                     self.headways[next_node] = []
@@ -518,6 +534,8 @@ class parallel_env(ParallelEnv):
                     agent_state=state,
                     headways=self.headways[next_node]
                 )
+
+                self.estimated_times[agent] = 0.0
 
             # === ACTION 2: SERVICE CENTER ===
             elif action == 2:
@@ -539,10 +557,10 @@ class parallel_env(ParallelEnv):
                         total_fuel_cost += edge_time / 300.0
 
                 except nx.NetworkXNoPath:
-                    reward = -10# antes era -10.0
+                    reward = 0 # antes era -10.0
                 else:
                     if state["fuel"] < total_fuel_cost:
-                        reward = -20 # em vez de -20
+                        reward = 0 # em vez de -20
                         print("total_fuel_cost: ", total_fuel_cost)
                         print("state[fuel]: ", state["fuel"])
                         print("VEIO PRO SERVICE CENTER SEM CONDIÇÃO DE CHEGAR")
@@ -555,12 +573,38 @@ class parallel_env(ParallelEnv):
                         state["uptime"] = 1.0
                         state["maintenance_status"] = "ok"
                         self.states[agent] = sc_node
-                        reward = -1.0 * (1 + total_travel_time / 600.0) # antes era -1.0 * 
-                        #reward = 0
+                        # reward = -1.0 * (1 + total_travel_time / 600.0) # antes era -1.0 * 
+                        reward = 0
 
             # === INVALID ACTION ===
             else:
-                reward = -10.0
+                reward = 0
+
+
+            """
+            # padroniza a chave
+            node = self.states[agent]
+
+            # garante que exista lista
+            if node not in self.headways:
+                self.headways[node] = []
+
+            headways_list = self.headways[node]
+            
+            if should_calc_reward:
+                reward = self.reward.getReward(
+                    new_state=self.states[agent],
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=headways_list
+                )
+            """
 
             # Presence and coordination tracking
             current_pos = self.states[agent]
@@ -814,10 +858,10 @@ class DefaultReward(RewardBaseClass):
 
         # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.5,        # less than 1 to not dominate
-            "uptime_bonus": 0.7,
-            "sync_score": 0.5,         
-            "energy_efficiency": 0.6
+            "occ_penalty": 0.0,        # less than 1 to not dominate
+            "uptime_bonus": 0.0,
+            "sync_score": 1.0,         
+            "energy_efficiency": 0.0
         }
 
         self.occupancy_range = occupancy_range
@@ -841,7 +885,7 @@ class DefaultReward(RewardBaseClass):
         Measures regularity in [0, 1]: 1 = perfect (intervals very close to target),
         0 = very irregular (relative deviation >= max_sync_rel_std)
         """
-        if not headways or len(headways) < 3:
+        if not headways or len(headways) < 3: # Estou passando todos os agentes e não os agentes na rota especifica
             return 0.0  # Not enough information to assess regularity
 
         # intervals in seconds
@@ -870,7 +914,7 @@ class DefaultReward(RewardBaseClass):
             return 0.0
         ratio = estimated_time / (expected_time + 1e-8)
         return float(np.clip(1.0 - ratio, 0.0, 1.0))
-
+    
     def getReward(
         self,
         new_state, previous_state, action, target, network,
@@ -890,15 +934,38 @@ class DefaultReward(RewardBaseClass):
         sync = self._sync_component(headways or [])
         eff = self._efficiency_component(float(estimated_time), float(expected_time))
 
+        #print("\n--- Componentes de Recompensa (Step) ---")
+        #print(f"  | Ocupação (occ_pen): {occ_pen:.4f}")
+        #print(f"  | Tempo de Atividade (uptime): {uptime:.4f}")
+        #print(f"  | Sincronização (sync): {sync:.4f}")
+        #print(f"  | Eficiência (eff): {eff:.4f}")
+
+        w = self.reward_weights
+        #print("  | Pesos:", w)
+
         # Weighted combination (keeping each term in [-1, +1])
         # occ_pen enters with NEGATIVE sign
         w = self.reward_weights
         reward = (
             -w["occ_penalty"] * occ_pen +
-             w["uptime_bonus"] * uptime +
+             w["uptime_bonus"] * uptime + # uptime esta sendo um positivo que esta tendendo a zero, enquanto ele vai
              w["sync_score"] * sync +
              w["energy_efficiency"] * eff
         )
+        
+        #weighted_occ = -w["occ_penalty"] * occ_pen
+        #weighted_uptime = w["uptime_bonus"] * uptime
+        #weighted_sync = w["sync_score"] * sync
+       # weighted_eff = w["energy_efficiency"] * eff
+
+        #reward = weighted_occ + weighted_uptime + weighted_sync + weighted_eff
+
+        #print("\n--- Recompensa Ponderada ---")
+        #print(f"  | occ_penalty * occ_pen: {weighted_occ:.4f}")
+        #print(f"  | uptime_bonus * uptime: {weighted_uptime:.4f}")
+        #print(f"  | sync_score * sync: {weighted_sync:.4f}")
+        #print(f"  | energy_efficiency * eff: {weighted_eff:.4f}")
+        #print(f"  | Recompensa Bruta: {reward:.4f}")
 
         # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
         weight_sum = (abs(w["occ_penalty"]) + w["uptime_bonus"] + w["sync_score"] + w["energy_efficiency"])
@@ -907,8 +974,87 @@ class DefaultReward(RewardBaseClass):
 
         # Clip final for numerical stability
         # reward += 0.2
+        # print(f"\n--- Recompensa Final Normalizada: {final_reward:.4f} ---")
         reward = float(np.clip(reward, -1.0, 1.0))
         return reward
+
+
+    """
+    def getRewardHard(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None
+    ):
+ 
+        Hard-min (minimax) scalarization:
+        - converte componentes para objetivos "maior é melhor"
+        - calcula reward = min(obj_i) (considerando pesos)
+        - normaliza/clipa para manter contrato [-1, 1]
+
+
+        # --- 1) extrai componentes (mesma lógica que já tinha) ---
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # --- 2) prepara objetivos "maior é melhor" ---
+        # occ_pen é uma penalidade (0 = ótimo, 1 = muito ruim), então invertemos:
+        obj_occ = -occ_pen        # agora: maior é melhor (menos penalidade => maior)
+        obj_uptime = uptime       # já maior é melhor
+        obj_sync = sync           # já maior é melhor
+        obj_eff = eff             # já maior é melhor
+
+        # --- 3) aplica pesos por objetivo (se peso == 0 => ignorar) ---
+        w = self.reward_weights  # dicionário esperado: occ_penalty, uptime_bonus, sync_score, energy_efficiency
+        w_occ = abs(w.get("occ_penalty", 0.0))
+        w_up  = float(w.get("uptime_bonus", 0.0))
+        w_sync = float(w.get("sync_score", 0.0))
+        w_eff = float(w.get("energy_efficiency", 0.0))
+
+        # Se um peso for zero, colocamos um sentinel alto (1.0) para que ele não seja o min.
+        # Alternativa: simplesmente não incluir o objetivo na lista; optamos por incluir sentinel
+        # para preservar a consistência de normalização.
+        objs = []
+        if w_occ != 0.0:
+            objs.append(w_occ * obj_occ)
+        else:
+            objs.append(1.0)
+
+        if w_up != 0.0:
+            objs.append(w_up * obj_uptime)
+        else:
+            objs.append(1.0)
+
+        if w_sync != 0.0:
+            objs.append(w_sync * obj_sync)
+        else:
+            objs.append(1.0)
+
+        if w_eff != 0.0:
+            objs.append(w_eff * obj_eff)
+        else:
+            objs.append(1.0)
+
+        # --- 4) normalização simples por maior peso ativo (evita escala estranha) ---
+        max_w = max(w_occ, w_up, w_sync, w_eff, 1.0)
+
+        # ### ALTERAÇÃO MINIMAX: HARD-MIN ###
+        reward = min(objs) / max_w
+        # ### FIM DA ALTERAÇÃO MINIMAX ###
+
+        # --- 5) garantia de contrato e estabilidade ---
+        reward = float(np.clip(reward, -1.0, 1.0))
+        return reward
+    """
 
 
 # This is the default stop class, which terminates the episode when the agent reaches the target node or takes the SERVICE_CENTER action

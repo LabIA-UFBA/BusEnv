@@ -1,0 +1,3 @@
+Algorithm,Label,"Config (occ,up,sync,energy)",Num runs,Final Reward (mean ± std),AUC (mean ± std)
+MAPPO,MAPPO-all-equal,"(1.0, 1.0, 1.0, 1.0)",5,622.043 ± 0.000,0.878 ± 0.000
+MAPPO,UNKNOWN,"(1.0, 0.0, 0.0, 0.0)",60,705.351 ± 668.019,0.929 ± 0.032
