@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
-import os, re, json
+import os
+import re
+import json
 import numpy as np
 import pandas as pd
-from collections import defaultdict
 
 BASE_DIR = "/mnt/ssd1/wesley/BusEnv/exp_results/mappo_mlp_sunt_bus"
-OUT_AGG = "tabela_aggregada_robusta.csv"
-OUT_DETAILED = "tabela_detalhada_runs.csv"
+OUT_AGG = os.path.join(BASE_DIR, "tabela_aggregada_robusta.csv")
+OUT_DETAILED = os.path.join(BASE_DIR, "tabela_detalhada_runs.csv")
 
-# Mapeia o label pelo nome da pasta ou parte do nome
-TARGET_LABELS_BY_NAME = {
-    "all-equal": "MAPPO-all-equal",
+# Mapeia tuplo de config -> label (ocorrência, uptime, sync, energy)
+CONFIG_TO_LABEL = {
+    (0.0, 0.0, 0.0, 1.0): "MAPPO-energy_efficiency",
+    (1.0, 0.0, 0.0, 0.0): "MAPPO-occ_penalty",
+    (0.0, 0.0, 1.0, 0.0): "MAPPO-sync_score",
+    (0.0, 1.0, 0.0, 0.0): "MAPPO-uptime_bonus",
+}
+
+# também permitir reconhecer pelo nome da pasta (substring)
+NAME_LABEL_SUBSTRINGS = {
+    "mappo-energy_efficiency": "MAPPO-energy_efficiency",
+    "mappo-occ_penalty": "MAPPO-occ_penalty",
+    "mappo-sync_score": "MAPPO-sync_score",
+    "mappo-uptime_bonus": "MAPPO-uptime_bonus",
 }
 
 FLOAT_TOL = 1e-6
 
 def find_config_tuple_from_name(name: str):
+    """Procura por '(a,b,c,d)' no nome e retorna tuplo de floats se válido."""
     m = re.search(r"\(([^)]+)\)", name)
     if not m:
         return None
@@ -66,45 +79,65 @@ def metrics_from_series(xs, ys, tail_frac=0.2):
             auc = 0.0
     return final_mean, auc
 
+def label_for_run(name: str, cfg):
+    """Determina label pelo tuplo de cfg (preferido) ou pelo nome (substring)."""
+    if cfg is not None:
+        # comparar floats com tolerância
+        for k, v in CONFIG_TO_LABEL.items():
+            if all(abs(a - b) < FLOAT_TOL for a, b in zip(k, cfg)):
+                return v
+    lower_name = name.lower()
+    for substr, v in NAME_LABEL_SUBSTRINGS.items():
+        if substr in lower_name:
+            return v
+    return "UNKNOWN"
+
 def collect_runs(base_dir):
     runs_list = []
     if not os.path.isdir(base_dir):
         raise FileNotFoundError(f"Base dir não encontrado: {base_dir}")
-    for name in os.listdir(base_dir):
+    for name in sorted(os.listdir(base_dir)):
         full = os.path.join(base_dir, name)
         if not os.path.isdir(full):
             continue
         cfg = find_config_tuple_from_name(name)
-        if cfg is None:
-            continue
         algo_from_params = None
+        seed = None
         params_path = os.path.join(full, "params.json")
         if os.path.exists(params_path):
             try:
                 with open(params_path, "r") as f:
                     pj = json.load(f)
                 algo_from_params = pj.get("algorithm") or pj.get("model", {}).get("custom_model_config", {}).get("algorithm")
-            except:
+                # tentativa de extrair seed se houver
+                seed = pj.get("seed") or pj.get("experiment_seed") or pj.get("config", {}).get("seed")
+            except Exception:
                 pass
-        # define o label pelo nome da pasta
-        label = None
-        lower_name = name.lower()
-        for k, v in TARGET_LABELS_BY_NAME.items():
-            if k in lower_name:
-                label = v
-                break
+
+        label = label_for_run(name, cfg)
         runs_list.append({
             "algo": (algo_from_params or "MAPPO").upper(),
-            "label": label or "UNKNOWN",
+            "label": label,
             "cfg": cfg,
             "name": name,
             "path": full,
-            "params_path": params_path if os.path.exists(params_path) else None
+            "params_path": params_path if os.path.exists(params_path) else None,
+            "seed": seed
         })
     return runs_list
 
 if __name__ == "__main__":
     runs = collect_runs(BASE_DIR)
+    if len(runs) == 0:
+        print("Nenhuma run encontrada em", BASE_DIR)
+        raise SystemExit(1)
+
+    # opcional: filtrar apenas labels conhecidos (os 4 exemplos solicitados)
+    target_labels = set(CONFIG_TO_LABEL.values())
+    runs = [r for r in runs if r["label"] in target_labels]
+    if len(runs) == 0:
+        print("Nenhuma run com os labels alvo encontrada. Verifique nomes / tuplos nas pastas.")
+        raise SystemExit(1)
 
     detailed_rows = []
     for r in runs:
@@ -123,13 +156,17 @@ if __name__ == "__main__":
             "Label": r["label"],
             "Config": str(r["cfg"]),
             "Run name": r["name"],
-            "Seed": None,
+            "Seed": r.get("seed"),
             "progress.csv": prog,
             "reward_column": ycol,
             "x_column": xcol,
             "final_mean_run": final_run,
             "auc_run": auc_run
         })
+
+    if len(detailed_rows) == 0:
+        print("Nenhuma run processada com sucesso.")
+        raise SystemExit(1)
 
     df_det = pd.DataFrame(detailed_rows)
     df_det.to_csv(OUT_DETAILED, index=False)
@@ -141,9 +178,9 @@ if __name__ == "__main__":
         finals = group["final_mean_run"].to_numpy(dtype=float)
         aucs = group["auc_run"].to_numpy(dtype=float)
         N = len(finals)
-        mean_final = float(np.mean(finals))
+        mean_final = float(np.mean(finals)) if N > 0 else 0.0
         std_final = float(np.std(finals, ddof=1)) if N > 1 else 0.0
-        mean_auc = float(np.mean(aucs))
+        mean_auc = float(np.mean(aucs)) if N > 0 else 0.0
         std_auc = float(np.std(aucs, ddof=1)) if N > 1 else 0.0
         agg_rows.append({
             "Algorithm": algo,

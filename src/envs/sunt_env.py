@@ -166,7 +166,7 @@ class parallel_env(ParallelEnv):
         self.episode_step_counter = 0  # Counts total environment steps per episode
         
         
-        self.use_only_mean_data = use_only_mean_data   # 0 = use only mean data, 1 = use daily data
+        self.use_only_mean_data = use_only_mean_data   # 1 = use only mean data, 0 = use daily data
 
         # Create metrics file if it doesn't exist
         if not os.path.exists(self.metrics_file):
@@ -221,7 +221,7 @@ class parallel_env(ParallelEnv):
         self.agent_positions = {agent: None for agent in self.possible_agents}
         self.route_last_move_time = {route_id: 0.0 for route_id in self.real_routes.keys()}
         self.route_leader = {}  # will be updated dynamically in step()
-
+        self.episode_step_counter = 0
 
         # --- Move on to the next day if the previous one has ended ---
         print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
@@ -255,9 +255,9 @@ class parallel_env(ParallelEnv):
             # CHANGE: function to decide number of agents per route (based on length)
             def _agents_for_path(path_len: int, default_agents: int) -> int:
                 if path_len < 15:
-                    return 1
+                    return 2
                 if path_len <= 30:
-                    return 1 # Antes era 2 
+                    return 2 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -296,7 +296,7 @@ class parallel_env(ParallelEnv):
                     route_preview += " → ..."
                 print(f"Trip ID: {trip_id:<10} | Agents: {', '.join(assigned_agents)} | "
                       f"Route length: {len(path):<3} | Path: {route_preview}")
-            print("====================================================\n")
+            print("=====================================================\n")
 
         # --- Usa sempre as rotas fixas ---
         self.agent_routes = self.fixed_agent_routes
@@ -385,12 +385,36 @@ class parallel_env(ParallelEnv):
             "steps": {agent: 0 for agent in self.agents},
             "done": False
         }
+        
+        # Validação de observação de 1 agente especifico, primeiro da fila 
+        sample_agent = self.agents[0] 
+        print("\n[OBS DEBUG - RESET]")
+        print(f"Agent: {sample_agent}")
+        print(f"Raw obs: {obs_array}")
+        print(f"Clipped obs: {clipped_obs}")
+        print(f"Obs space low: {self.observation_space(sample_agent).low}")
+        print(f"Obs space high: {self.observation_space(sample_agent).high}")
+
+        print("\n[TIME DEBUG]")
+        print(f"Simulated days: {self.simulated_days}")
+        print(f"Current day index: {self.current_day_index}")
+        print(f"Agent start time (seconds): {list(self.agent_times.items())[:3]}")
+
+
 
         # --- Debug: presence summary ---
         active_points = {node: agents for node, agents in self.node_occupancy.items() if agents}
         print(f"📍 [RESET DEBUG] Agent initial positions per node: {active_points}")
 
         print("✅ [RESET COMPLETE] All agents initialized with status='active'.")
+        print("\n=== [RESET SUMMARY] ===")
+        print(f"Agents: {len(self.agents)}")
+        print(f"Routes: {len(set(tuple(r) for r in self.agent_routes.values()))}")
+        print(f"Leaders per route: {self.route_leader}")
+        print("Agent → Route length:")
+        for agent, route in self.agent_routes.items():
+            print(f"  {agent}: len={len(route)} start={route[0]} end={route[-1]}")
+        print("=======================\n")
         return observations
     
     def step(self, actions):
@@ -406,6 +430,8 @@ class parallel_env(ParallelEnv):
         terminations = {}
         truncations = {}
         infos = {}
+        self.episode_step_counter += 1
+
 
         # Safety: ensure agent_states exists
         if not hasattr(self, "agent_states"):
@@ -419,8 +445,9 @@ class parallel_env(ParallelEnv):
         for node in self.node_occupancy:
             self.node_occupancy[node] = []  # clear per-step occupancy
 
-        #if self.episode_step_counter % 100 == 0:
-            #print(f"[DEBUG] Step {self.episode_step_counter}: Cleared node_occupancy map.")
+        if self.episode_step_counter % 50 == 0:
+            print(f"\n--- [STEP {self.episode_step_counter}] ---")
+
 
         # Record latest positions as we go
         step_node_positions = {}
@@ -450,6 +477,8 @@ class parallel_env(ParallelEnv):
 
             # === ACTION 0: WAIT ===
             if action == 0:
+                if action == 0 and self.steps[agent] % 20 == 0:
+                    print(f"[WAIT][{agent}] time={self.agent_times[agent]:.0f}s")
                 reward = 0 # Antes era  -0.1
                 elapsed = 60.0  # 1 minute wait
                 self.agent_times[agent] += elapsed
@@ -504,6 +533,15 @@ class parallel_env(ParallelEnv):
 
                 self.states[agent] = next_node
 
+                print(
+                    f"[MOVE][{agent}] "
+                    f"{curr_node} → {next_node} | "
+                    f"route_idx={self.agent_states[agent]['route_idx']} | "
+                    f"time+={travel_time:.1f}s | "
+                    f"fuel={state['fuel']:.1f} | "
+                    f"uptime={state['uptime']:.3f}"
+                )
+
                 """
                 # --- DEBUG AQUI ---
                 total_sec = int(self.agent_times[agent])
@@ -522,6 +560,13 @@ class parallel_env(ParallelEnv):
                     self.headways[next_node] = []
                 self.headways[next_node].append(self.agent_times[agent])
 
+                if len(self.headways[next_node]) > 1:
+                    print(
+                        f"[HEADWAY][node {next_node}] "
+                        f"times={sorted(self.headways[next_node])}"
+                    )
+
+
                 reward = self.reward.getReward(
                     new_state=next_node,
                     previous_state=curr_node,
@@ -534,6 +579,16 @@ class parallel_env(ParallelEnv):
                     agent_state=state,
                     headways=self.headways[next_node]
                 )
+
+                print(
+                    f"[REWARD][{agent}] "
+                    f"node={next_node} | "
+                    f"est={self.estimated_times[agent]:.1f} | "
+                    f"exp={self.expected_times[agent]:.1f} | "
+                    f"headway_n={len(self.headways[next_node])} | "
+                    f"reward={reward:.3f}"
+                )
+
 
                 self.estimated_times[agent] = 0.0
 
@@ -568,7 +623,9 @@ class parallel_env(ParallelEnv):
                         self.agent_times[agent] += total_travel_time
                         self.estimated_times[agent] += total_travel_time
                         state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
+                        # total_travel_time_hors = total_travel_time / (12 * 3600)
                         state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
+                        # state["uptime"] = max(1.0, state["uptime"] / (total_travel_time + 1e-8))
                         state["fuel"] = 100.0
                         state["uptime"] = 1.0
                         state["maintenance_status"] = "ok"
@@ -580,6 +637,10 @@ class parallel_env(ParallelEnv):
             else:
                 reward = 0
 
+
+            assert 0.0 <= state["fuel"] <= 100.0, f"Fuel inválido: {state['fuel']}"
+            assert 0.0 <= state["uptime"] <= 1.0, f"Uptime inválido: {state['uptime']}"
+            assert self.agent_times[agent] >= 0.0
 
             """
             # padroniza a chave
@@ -614,6 +675,13 @@ class parallel_env(ParallelEnv):
                 self.node_occupancy[current_pos] = []
             self.node_occupancy[current_pos].append(agent)
 
+            if len(self.node_occupancy[current_pos]) > 1:
+                print(
+                    f"[OCCUPANCY] node={current_pos} "
+                    f"agents={self.node_occupancy[current_pos]}"
+                )
+
+
             #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
                # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
 
@@ -624,6 +692,11 @@ class parallel_env(ParallelEnv):
 
             # === End-of-day to agents, putting the finished status ===
             if self.agent_times[agent] >= END_OF_DAY:
+                print(
+                    f"[OBS ZEROED][END_OF_DAY] agent={agent} "
+                    f"time={self.agent_times[agent]:.0f}s "
+                    f"step={self.episode_step_counter}"
+                )
                 state["status"] = "finished"
                 observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
                 rewards[agent] = 0.0
@@ -640,6 +713,13 @@ class parallel_env(ParallelEnv):
             tt_next_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
             tt_next = min(tt_next_raw, TRAVEL_TIME_CAP)
             normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
+
+            # === Observation update ===
+            if state.get("status") != "active":
+                print(
+                    f"[WARN] OBS about to be computed for non-active agent "
+                    f"{agent} status={state.get('status')}"
+                )
 
             obs_array = np.array([
                 self.agent_times[agent] / (24 * 60 * 60),
@@ -658,6 +738,13 @@ class parallel_env(ParallelEnv):
                 self.observation_space(agent).high
             )
 
+            if not observations[agent].any():
+                print(
+                    f"[WARN][ZERO OBS AFTER CLIP] agent={agent} "
+                    f"time={self.agent_times[agent]:.0f}s "
+                    f"status={state.get('status')}"
+                )
+
             rewards[agent] = reward
             terminations[agent] = False
             truncations[agent] = False
@@ -669,7 +756,11 @@ class parallel_env(ParallelEnv):
                 leader = self.route_leader.get(rid)
                 if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
                     self.route_leader[rid] = agent
-                    #print(f"[DEBUG] {agent} is now leader of route {rid}")
+                    print(
+                        f"[LEADER CHANGE] route={rid} "
+                        f"new={agent} "
+                        f"time={self.agent_times[agent]:.0f}"
+                    )
 
         # === Global post-processing ===
         all_finished = all(self.agent_times[a] >= END_OF_DAY for a in self.possible_agents)
@@ -679,6 +770,8 @@ class parallel_env(ParallelEnv):
 
         if all_finished:
             print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
+            for a in self.possible_agents:
+                print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
             self.day_done = True
             self.agents_finished_previous_day = True
         else:
@@ -692,6 +785,20 @@ class parallel_env(ParallelEnv):
         #print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
         #    f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
         #    f"| Done flag: {all_parked}")
+
+        if self.episode_step_counter % 100 == 0:
+            for a, obs in observations.items():
+                print(f"[OBS SNAPSHOT][{a}] {obs}")
+
+        if self.episode_step_counter % 50 == 0:
+            print("\n[STEP SUMMARY]")
+            for a in self.possible_agents:
+                print(
+                    f"  {a}: "
+                    f"status={self.agent_states[a].get('status')} | "
+                    f"time={self.agent_times[a]:.0f}s | "
+                    f"route_idx={self.agent_states[a]['route_idx']}"
+                )
 
         return observations, rewards, dones, infos
 
@@ -858,10 +965,10 @@ class DefaultReward(RewardBaseClass):
 
         # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.0,        # less than 1 to not dominate
-            "uptime_bonus": 0.0,
-            "sync_score": 1.0,         
-            "energy_efficiency": 0.0
+            "occ_penalty": 0.7,        # less than 1 to not dominate
+            "uptime_bonus": 0.4,
+            "sync_score": 0.7,         
+            "energy_efficiency": 0.6
         }
 
         self.occupancy_range = occupancy_range
@@ -940,6 +1047,11 @@ class DefaultReward(RewardBaseClass):
         #print(f"  | Sincronização (sync): {sync:.4f}")
         #print(f"  | Eficiência (eff): {eff:.4f}")
 
+        assert 0.0 <= occ_pen <= 1.0, f"occ_pen fora do range: {occ_pen}"
+        assert 0.0 <= uptime <= 1.0, f"uptime fora do range: {uptime}"
+        assert 0.0 <= sync <= 1.0, f"sync fora do range: {sync}"
+        assert 0.0 <= eff <= 1.0, f"eff fora do range: {eff}"
+
         w = self.reward_weights
         #print("  | Pesos:", w)
 
@@ -952,30 +1064,30 @@ class DefaultReward(RewardBaseClass):
              w["sync_score"] * sync +
              w["energy_efficiency"] * eff
         )
-        
-        #weighted_occ = -w["occ_penalty"] * occ_pen
-        #weighted_uptime = w["uptime_bonus"] * uptime
-        #weighted_sync = w["sync_score"] * sync
-       # weighted_eff = w["energy_efficiency"] * eff
-
-        #reward = weighted_occ + weighted_uptime + weighted_sync + weighted_eff
-
-        #print("\n--- Recompensa Ponderada ---")
-        #print(f"  | occ_penalty * occ_pen: {weighted_occ:.4f}")
-        #print(f"  | uptime_bonus * uptime: {weighted_uptime:.4f}")
-        #print(f"  | sync_score * sync: {weighted_sync:.4f}")
-        #print(f"  | energy_efficiency * eff: {weighted_eff:.4f}")
-        #print(f"  | Recompensa Bruta: {reward:.4f}")
 
         # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
         weight_sum = (abs(w["occ_penalty"]) + w["uptime_bonus"] + w["sync_score"] + w["energy_efficiency"])
         if weight_sum > 0:
             reward = reward / weight_sum
 
+        assert weight_sum >= 0.0, f"weight_sum negativo: {weight_sum}"
+        
         # Clip final for numerical stability
         # reward += 0.2
         # print(f"\n--- Recompensa Final Normalizada: {final_reward:.4f} ---")
         reward = float(np.clip(reward, -1.0, 1.0))
+
+        if np.random.rand() < 0.005:  # ~0.5% dos steps
+            print(
+                f"[REWARD DBG] "
+                f"occ_pen={occ_pen:.3f} "
+                f"uptime={uptime:.3f} "
+                f"sync={sync:.3f} "
+                f"eff={eff:.3f} | "
+                f"weights={w} | "
+                f"final={reward:.3f}"
+            )
+
         return reward
 
 
