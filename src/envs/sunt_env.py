@@ -255,9 +255,9 @@ class parallel_env(ParallelEnv):
             # CHANGE: function to decide number of agents per route (based on length)
             def _agents_for_path(path_len: int, default_agents: int) -> int:
                 if path_len < 15:
-                    return 2
+                    return 1
                 if path_len <= 30:
-                    return 2 # Antes era 2 
+                    return 1 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -567,7 +567,7 @@ class parallel_env(ParallelEnv):
                     )
 
 
-                reward = self.reward.getReward(
+                reward = self.reward.getRewardSoftMin(
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -940,6 +940,8 @@ class parallel_env(ParallelEnv):
 class RewardBaseClass():
     def getReward(self, state, previousState, action, target, graph):
         raise NotImplementedError
+    def getRewardSoftMin(self, state, previousState, action, target, graph):
+        raise NotImplementedError
 
 # This is the base class for stop classes
 class StopConditionBaseClass():
@@ -957,8 +959,8 @@ class DefaultReward(RewardBaseClass):
     """
     def __init__(self, waitTimeDict=None, reward_weights=None, occupancy_range=(0.6, 0.9),
                  target_headway_seconds: float = 600.0,  # 10 minutos
-                 max_sync_rel_std: float = 1.0          # >1 é truncado
-                 ):
+                 max_sync_rel_std: float = 1.0,          # >1 é truncado
+                 softmin_temperature=0.2):
         super().__init__()
         # self.waitTimeDict can be used if needed for other metrics
         self.waitTimeDict = waitTimeDict or {}
@@ -974,6 +976,7 @@ class DefaultReward(RewardBaseClass):
         self.occupancy_range = occupancy_range
         self.target_headway = float(target_headway_seconds)
         self.max_sync_rel_std = float(max_sync_rel_std)
+        self.softmin_temperature = float(softmin_temperature)
 
     def _occ_component(self, occupancy: float) -> float:
         """
@@ -1167,6 +1170,128 @@ class DefaultReward(RewardBaseClass):
         reward = float(np.clip(reward, -1.0, 1.0))
         return reward
     """
+
+    def getRewardSoftMin(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+            # ============================================================
+            # 1 - EXTRAÇÃO DOS COMPONENTES (OBJETIVOS SEPARADOS)
+            # ============================================================
+            # Aqui nós explicitamente mantemos múltiplos objetivos R_i,
+            # o que caracteriza o problema como Multi-Objective RL (MORL).
+            #
+            # Cada componente é normalizado para [0, 1] antes da agregação.
+
+            occ_pen = 0.0   # penalidade de ocupação (quanto mais longe do ideal, pior)
+            uptime = 0.0    # tempo de atividade do veículo
+            sync = 0.0      # regularidade de headways
+            eff = 0.0       # eficiência temporal
+
+            if agent_state is not None:
+                occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+                uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+            sync = self._sync_component(headways or [])
+            eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+            # ============================================================
+            # 2 - DEFINIÇÃO DOS OBJETIVOS (MAIOR = MELHOR)
+            # ============================================================
+            # Para aplicar Soft Max-Min, todos os objetivos
+            # precisam estar no mesmo sentido semântico:
+            # - valores maiores significam comportamento melhor
+            #
+            # Por isso, penalidades são invertidas.
+
+            obj_occ = -occ_pen     # quanto menor a penalidade, maior o objetivo
+            obj_uptime = uptime
+            obj_sync = sync
+            obj_eff = eff
+
+            # ============================================================
+            # 3) SELEÇÃO DOS OBJETIVOS ATIVOS E APLICAÇÃO DE PESOS
+            # ============================================================
+            # Diferente de uma soma ponderada clássica, aqui os pesos
+            # NÃO definem diretamente a importância final,
+            # mas apenas a escala relativa de cada objetivo.
+            #
+            # Objetivos com peso zero são removidos da escalarização pra não dar BO 
+
+            w = self.reward_weights
+            objs = []
+            labels = []
+
+            if w["occ_penalty"] > 0:
+                objs.append(abs(w["occ_penalty"]) * obj_occ)
+                labels.append("occ")
+
+            if w["uptime_bonus"] > 0:
+                objs.append(w["uptime_bonus"] * obj_uptime)
+                labels.append("uptime")
+
+            if w["sync_score"] > 0:
+                objs.append(w["sync_score"] * obj_sync)
+                labels.append("sync")
+
+            if w["energy_efficiency"] > 0:
+                objs.append(w["energy_efficiency"] * obj_eff)
+                labels.append("eff")
+
+            objs = np.array(objs, dtype=np.float32)
+
+            # ============================================================
+            # 4) SOFT MAX-MIN (SOFTMIN SCALARIZATION)
+            # ============================================================
+            # Este é o núcleo MORL do método.
+            #
+            # A ideia do Soft Max-Min é:
+            #   - dar mais peso aos objetivos com PIOR desempenho
+            #   - sem ignorar completamente os outros objetivos
+            #
+            # Isso é feito aplicando um softmin sobre os objetivos.
+
+            T = self.softmin_temperature  # temperatura controla quão "duro" é o min no exemplo base ta pra 0.2
+            # T → 0  => aproxima minimax (hard min)
+            # T alto => aproxima média ponderada
+
+            # Softmin é implementado como softmax sobre o negativo
+            logits = -objs / (T + 1e-8)
+
+            # Estabilidade numérica (remove o maior logit)
+            weights = np.exp(logits - np.max(logits))
+            weights = weights / (np.sum(weights) + 1e-8)
+
+            # A reward final é uma combinação ponderada,
+            # onde objetivos piores recebem mais peso automaticamente.
+            reward = float(np.sum(weights * objs))
+
+            # ============================================================
+            # 5) NORMALIZAÇÃO FINAL
+            # ============================================================
+            # Garante contrato esperado pelo algoritmo de RL
+            # e evita instabilidade numérica.
+            reward = float(np.clip(reward, -1.0, 1.0))
+
+            # ============================================================
+            # 6) DEBUG (INTERPRETABILIDADE)
+            # ============================================================
+            # Esse log é extremamente útil para validar MORL:
+            # pra conseguir ver explicitamente
+            #   - quais objetivos estão piores
+            #   - como os pesos se redistribuem dinamicamente
+            if np.random.rand() < 0.005:
+                dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+                print(
+                    f"[SOFTMIN DBG] T={T:.2f} | "
+                    f"objs=[{dbg}] | "
+                    f"weights={weights.round(3)} | "
+                    f"reward={reward:.3f}"
+                )
+
+            return reward
 
 
 # This is the default stop class, which terminates the episode when the agent reaches the target node or takes the SERVICE_CENTER action

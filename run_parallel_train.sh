@@ -41,7 +41,7 @@ algos=("ia2c")
 # Não está na lib
 # "ipg"
 
-# 🔄 Número de execuções por algoritmo (edite à vontade)
+# 🔄 Número de execuções por algoritmo (edite à vontade) 
 runs_per_algo=1
 
 # Pastas de saída
