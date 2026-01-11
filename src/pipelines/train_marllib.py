@@ -91,10 +91,10 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env = parallel_env(
             network=G,
             actions_amount=3,
-            agents_per_route=1, # Number of agents sharing the same route
+            agents_per_route=4, # Number of agents sharing the same route
             use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
-            num_agents=5,
+            num_agents=20,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,

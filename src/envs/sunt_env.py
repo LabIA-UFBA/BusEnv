@@ -257,7 +257,7 @@ class parallel_env(ParallelEnv):
                 if path_len < 15:
                     return 1
                 if path_len <= 30:
-                    return 1 # Antes era 2 
+                    return 2 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -533,6 +533,7 @@ class parallel_env(ParallelEnv):
 
                 self.states[agent] = next_node
 
+                """
                 print(
                     f"[MOVE][{agent}] "
                     f"{curr_node} → {next_node} | "
@@ -542,7 +543,7 @@ class parallel_env(ParallelEnv):
                     f"uptime={state['uptime']:.3f}"
                 )
 
-                """
+              
                 # --- DEBUG AQUI ---
                 total_sec = int(self.agent_times[agent])
                 hours = total_sec // 3600
@@ -567,7 +568,7 @@ class parallel_env(ParallelEnv):
                     )
 
 
-                reward = self.reward.getRewardSoftMin(
+                reward = self.reward.getRewardLowerQuantile(
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -580,6 +581,7 @@ class parallel_env(ParallelEnv):
                     headways=self.headways[next_node]
                 )
 
+                """
                 print(
                     f"[REWARD][{agent}] "
                     f"node={next_node} | "
@@ -588,7 +590,7 @@ class parallel_env(ParallelEnv):
                     f"headway_n={len(self.headways[next_node])} | "
                     f"reward={reward:.3f}"
                 )
-
+                """
 
                 self.estimated_times[agent] = 0.0
 
@@ -1094,7 +1096,6 @@ class DefaultReward(RewardBaseClass):
         return reward
 
 
-    """
     def getRewardHard(
         self,
         new_state, previous_state, action, target, network,
@@ -1102,10 +1103,10 @@ class DefaultReward(RewardBaseClass):
         agent_state=None, headways=None
     ):
  
-        Hard-min (minimax) scalarization:
-        - converte componentes para objetivos "maior é melhor"
-        - calcula reward = min(obj_i) (considerando pesos)
-        - normaliza/clipa para manter contrato [-1, 1]
+       # Hard-min (minimax) scalarization:
+       # - converte componentes para objetivos "maior é melhor"
+       # - calcula reward = min(obj_i) (considerando pesos)
+       # - normaliza/clipa para manter contrato [-1, 1]
 
 
         # --- 1) extrai componentes (mesma lógica que já tinha) ---
@@ -1169,7 +1170,6 @@ class DefaultReward(RewardBaseClass):
         # --- 5) garantia de contrato e estabilidade ---
         reward = float(np.clip(reward, -1.0, 1.0))
         return reward
-    """
 
     def getRewardSoftMin(
             self,
@@ -1292,6 +1292,282 @@ class DefaultReward(RewardBaseClass):
                 )
 
             return reward
+
+    def getRewardMaxMedian(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES (OBJETIVOS MORL)
+        # ============================================================
+        # Cada componente representa um objetivo distinto R_i.
+        # Todos são normalizados previamente para [0, 1]
+
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para aplicar qualquer escalarização MORL,
+        # todos os objetivos precisam ter a mesma semântica.
+        #
+        # Penalidades são invertidas.
+
+        obj_occ = -occ_pen
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+        # ============================================================
+        # 3) SELEÇÃO DOS OBJETIVOS ATIVOS
+        # ============================================================
+        # Diferente da soma ponderada:
+        # - pesos NÃO entram como multiplicadores
+        # - eles funcionam apenas como liga/desliga de objetivos
+        #
+        # Isso preserva a propriedade do Max-Median que é o que estamos aplicando aqui no caso
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(obj_eff)
+            labels.append("eff")
+
+        objs = np.array(objs, dtype=np.float32)
+
+        # ============================================================
+        # 4) MAX-MEDIAN (ESCALARIZAÇÃO POR MEDIANA)
+        # ============================================================
+        # Aqui está o núcleo da técnica:
+        #
+        # - Ordenamos implicitamente os objetivos
+        # - Selecionamos o valor mediano
+        #
+        # Esse valor representa o "desempenho típico"
+        # da política naquele step.
+
+        reward = float(np.median(objs))
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante compatibilidade com o algoritmo de RL
+        # e estabilidade numérica.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        # ============================================================
+        # 6) DEBUG (INTERPRETABILIDADE MORL)
+        # ============================================================
+        # Útil para verificar:
+        # - quais objetivos estão extremos tanto pra cima quanto pra baixo
+        # - qual deles está definindo a mediana, tambvém pra ver se tem algum bug rolando
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[MAX-MEDIAN DBG] "
+                f"objs=[{dbg}] | "
+                f"median={reward:.3f}"
+            )
+
+        return reward
+
+    def getRewardLowerQuantile(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None,
+        alpha=1/3
+    ):
+        # ============================================================
+        # CONTEXTO GERAL ESSE AQUI ME CONFUNDIU UM POUCO
+        # ============================================================
+        # Este método implementa a escalarização Multi Objetivo conhecida
+        # como Lower Quantile Optimization.
+        #
+        # A ideia central NÃO é:
+        #   - otimizar a média dos objetivos
+        #   - nem otimizar apenas o pior caso
+        #
+        # Mas sim:
+        #   - otimizar a "faixa inferior" dos objetivos
+        #
+        # Em outras palavras:
+        #   "garanta que os objetivos ruins não estejam ruins demais",
+        # sem se tornar excessivamente conservador.
+        #
+        # Matematicamente igual no artigo:
+        #   f(R1,...,Rn) = Q_α({Ri})
+        #
+        # onde α define qual fração inferior dos objetivos importa.
+        # Neste experimento, α = 1/3.
+        # ============================================================
+
+
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES DE RECOMPENSA
+        # ============================================================
+        # Aqui extraímos os mesmos componentes já usados nas outras
+        # funções de reward.
+        #
+        # IMPORTANTE:
+        #   Cada componente é normalizado para [0, 1].
+        #   Neste ponto ainda NÃO fazemos nenhuma agregação.
+
+        occ_pen = 0.0   # Penalidade de ocupação (0 = ideal, 1 = muito ruim)
+        uptime = 0.0    # Fração de tempo ativo (0 = ruim, 1 = perfeito)
+        sync = 0.0      # Regularidade de headways (0 = ruim, 1 = perfeito)
+        eff = 0.0       # Eficiência temporal (0 = ruim, 1 = perfeito)
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para MORL, todos os objetivos precisam ter o mesmo sentido
+        # semântico: valores maiores indicam comportamento melhor.
+        #
+        # - uptime, sync e eff já seguem essa lógica
+        # - occ_pen é uma penalidade, então invertimos o sinal
+
+        obj_occ = -occ_pen      # menor penalidade → valor maior
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+
+        # ============================================================
+        # 3) APLICAÇÃO DE PESOS (ESCALA RELATIVA)
+        # ============================================================
+        # Diferente de uma soma ponderada tradicional:
+        #   → aqui os pesos NÃO definem contribuição final direta
+        #   → eles apenas ajustam a escala relativa entre objetivos
+        #
+        # Objetivos com peso zero são ignorados completamente,
+        # evitando que entrem na ordenação e afetem o quantil, aquele α la
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(abs(w["occ_penalty"]) * obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(w["uptime_bonus"] * obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(w["sync_score"] * obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(w["energy_efficiency"] * obj_eff)
+            labels.append("eff")
+
+        # Converte para numpy para facilitar ordenação
+        objs = np.array(objs, dtype=np.float32)
+
+
+        # ============================================================
+        # 4) LOWER QUANTILE OPTIMIZATION (NÚCLEO DO MÉTODO)
+        # ============================================================
+        # Passo-chave da técnica:
+        #
+        # 1) Ordenamos os objetivos do pior para o melhor
+        # 2) Selecionamos o quantil inferior Q_α
+        #
+        # Exemplo com 4 objetivos:
+        #   sorted = [-1.0, 0.0, 0.9, 1.0]
+        #
+        # α = 1/3 → índice ≈ 1
+        # reward = 0.0
+        #
+        # Ou seja:
+        #   - ignoramos o pior extremo
+        #   - focamos na fronteira inferior aceitável
+
+        sorted_objs = np.sort(objs)  # crescente: pior → melhor
+
+        n = len(sorted_objs)
+        assert n > 0, "Nenhum objetivo ativo para escalarização"
+
+        # Índice do quantil inferior
+        # (n - 1) garante que o índice fique no range válido
+        q_idx = int(np.floor(alpha * (n - 1)))
+
+        reward = float(sorted_objs[q_idx])
+
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante que o reward respeite o contrato esperado
+        # pelo algoritmo de RL (ex: PPO, DQN, A2C, etc.)
+        #
+        # Também evita explosões numéricas.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+
+        # ============================================================
+        # 6) DEBUG E INTERPRETABILIDADE
+        # ============================================================
+        # Este log é pra ajudar no debug é útil para:
+        #   - validar o comportamento da escalarização
+        #   - entender quais objetivos estão segurando a política
+        #
+        # Ele mostra:
+        #   - valores individuais
+        #   - ordenação
+        #   - valor do quantil escolhido
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[LOWER-Q DBG] α={alpha:.2f} | "
+                f"objs=[{dbg}] | "
+                f"sorted={sorted_objs.round(3)} | "
+                f"Qα={reward:.3f}"
+            )
+
+        return reward
+
+
 
 
 # This is the default stop class, which terminates the episode when the agent reaches the target node or takes the SERVICE_CENTER action
