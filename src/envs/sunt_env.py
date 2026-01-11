@@ -255,7 +255,7 @@ class parallel_env(ParallelEnv):
             # CHANGE: function to decide number of agents per route (based on length)
             def _agents_for_path(path_len: int, default_agents: int) -> int:
                 if path_len < 15:
-                    return 2
+                    return 1
                 if path_len <= 30:
                     return 2 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
@@ -1173,3 +1173,4 @@ class DefaultReward(RewardBaseClass):
 class DefaultStopClass(StopConditionBaseClass):
     def isTerminated(self, state, previousState, action, target, graph):
         return state == target or action == 2
+
