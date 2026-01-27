@@ -2,7 +2,7 @@ import pickle
 import pandas as pd # Importe pandas se você espera que o conteúdo seja um DataFrame
 
 # 'output/combined_sum_amount.pkl' ou 'output/combined_averages.pkl'
-file_path = 'src/training_observation/occupancy_rate.pkl' 
+file_path = '/mnt/ssd1/wesley/BusEnv/src/training_observation/occupancy_rate.pkl' 
 
 try:
     with open(file_path, 'rb') as f:
@@ -15,7 +15,7 @@ try:
         print("É um dicionário. Primeiros 5 itens:")
         for i, (key, value) in enumerate(data.items()):
             print(f"  {key}: {value}")
-            if i >= 40: # Para não imprimir tudo se for muito grande
+            if i >= 5: # Para não imprimir tudo se for muito grande
                 break
         if len(data) > 5:
             print(f"  ...e mais {len(data) - 5} itens.")

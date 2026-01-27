@@ -9,6 +9,8 @@ import gym.utils.seeding  # import seeding
 from gym.spaces import Discrete
 import csv
 import os
+import pandas as pd
+from collections import defaultdict
 
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
@@ -131,8 +133,21 @@ class parallel_env(ParallelEnv):
             if f.startswith("daily_data_") and f.endswith(".pkl")
         ])
         self.current_day_index = 0
+        self.current_service_day = 0
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
+
+        self.occupancy_source = "quantum_lstm" # "real" | "quantum_qru" | "quantum_lstm"
+
+        self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
+
+        self.quantum_routes = [
+            "20001_310_1",
+            "20001_310_2",
+            "20002_1320_1",
+            "20002_1320_10",
+            "20002_1367_5",
+        ]
 
         # --- Simulation control flags ---
         self._advance_day = False
@@ -179,6 +194,9 @@ class parallel_env(ParallelEnv):
         self.future_demand_at_B_mean = future_demand_at_B or {} 
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
+
+        self.debug_quantum = True   # DEBUG MODE ON
+
 
 
     @property
@@ -257,7 +275,7 @@ class parallel_env(ParallelEnv):
                 if path_len < 15:
                     return 1
                 if path_len <= 30:
-                    return 2 # Antes era 2 
+                    return 1 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -522,6 +540,20 @@ class parallel_env(ParallelEnv):
                     alpha = 0.5
                     occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
                     occupancy = max(0.0, min(occupancy, 1.0))
+
+                    # <<< DEBUG >>> QUANTUM OCCUPANCY USAGE
+                    if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                        print(
+                            f"🧪 [Q-OCC USED] day={self.current_day_index} | "
+                            f"step={self.episode_step_counter} | "
+                            f"agent={agent} | "
+                            f"node={curr_node} | "  
+                            f"prev={prev_occ:.4f} | "
+                            f"quantum_raw={expected_occ:.4f} | "
+                            f"used_clipped={occupancy:.4f} | "
+                            f"source={self.occupancy_source}"
+                        )
+
                 else:
                     occupancy = prev_occ
 
@@ -568,7 +600,7 @@ class parallel_env(ParallelEnv):
                     )
 
 
-                reward = self.reward.getRewardLowerQuantile(
+                reward = self.reward.getReward(
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -882,33 +914,71 @@ class parallel_env(ParallelEnv):
         return self.service_center_node
     
     def load_current_day_data(self):
-        """Loads the data for the current day and falls back to averages if necessary."""
+        """Loads base data (daily or mean), always extracts service_day from daily,
+        and applies quantum override if enabled.
+        """
 
+        service_day = None
+
+        # =====================================================
+        # 1️⃣ TRY TO LOAD DAILY (FOR SERVICE DAY)
+        # =====================================================
+        if self.total_days > 0:
+            file_path = os.path.join(
+                self.daily_data_path,
+                self.daily_files[self.current_day_index]
+            )
+
+            with open(file_path, "rb") as f:
+                day_data = pickle.load(f)
+
+            service_day = day_data.get("date")
+
+            print(
+                f"\n📅 [ENV] Loading daily metadata for {service_day} "
+                f"({self.current_day_index + 1}/{self.total_days})"
+            )
+        else:
+            day_data = {}
+            print("⚠️ No daily files found. service_day unavailable.")
+
+        # =====================================================
+        # 2️⃣ BASE DATA SELECTION
+        # =====================================================
         if getattr(self, "use_only_mean_data", 0) == 1:
-            print("📘 [ENV] Using ONLY MEAN DATA (daily files ignored).")
+            print("📘 [ENV] Using MEAN values as base.")
             self._load_mean_values()
-            return
+        else:
+            print("📘 [ENV] Using DAILY values as base (with mean fallback).")
 
-        if self.total_days == 0:
-            print("⚠️ No daily data files found. Using default averages.")
+            self.avg_travel_time_AB = day_data.get(
+                "avg_travel_times", self.avg_travel_time_AB
+            )
+            self.future_demand_at_B = day_data.get(
+                "future_demand", self.future_demand_at_B
+            )
+            self.occupancy_rate = day_data.get(
+                "occupancy_rate", self.occupancy_rate
+            )
+            self.uptime_normalized = day_data.get(
+                "uptime_normalized", self.uptime_normalized
+            )
+
             self._use_fallbacks()
-            return
 
-        file_path = os.path.join(self.daily_data_path, self.daily_files[self.current_day_index])
-        with open(file_path, "rb") as f:
-            day_data = pickle.load(f)
+        # =====================================================
+        # 3️⃣ QUANTUM / LSTM OVERRIDE
+        # =====================================================
+        if self.occupancy_source != "real":
+            print(
+                f"⚛️ [ENV] Trying occupancy override | "
+                f"source={self.occupancy_source} | "
+                f"service_day={service_day}"
+            )
 
-        print(f"\n📅 [ENV] Loading daily data for {day_data.get('date', 'unknown')} "
-            f"({self.current_day_index + 1}/{self.total_days})")
-
-        # Load with fallback preservation
-        self.avg_travel_time_AB = day_data.get("avg_travel_times", self.avg_travel_time_AB)
-        self.future_demand_at_B = day_data.get("future_demand", self.future_demand_at_B)
-        self.occupancy_rate = day_data.get("occupancy_rate", self.occupancy_rate)
-        self.uptime_normalized = day_data.get("uptime_normalized", self.uptime_normalized)
-
-        # Apply explicit fallbacks when missing
-        self._use_fallbacks()
+            self._override_occupancy_with_predictions_node_level(
+                service_day=service_day
+            )
 
     def _load_mean_values(self):
         """ Always forces the environment to use only mean values """
@@ -936,6 +1006,137 @@ class parallel_env(ParallelEnv):
         if not getattr(self, "uptime_normalized", None):
             self.uptime_normalized = self.uptime_normalized_mean
             print("⚠️ Using fallback uptime_normalized_mean")
+
+    def _override_occupancy_with_predictions_node_level(self, service_day):
+        """
+        Overrides occupancy_rate at NODE LEVEL using quantum or LSTM predictions.
+
+        - Expects quantum predictions in ABSOLUTE passengers
+        - Converts to normalized occupancy ∈ [0,1]
+        - Follows the SAME logic used in generate_daily_data.py
+        - Falls back gracefully when data is missing
+        """
+
+        BUS_CAPACITY = 80  # MUST match generate_daily_data.py
+
+        print(
+            f"⚛️ [ENV] Quantum override attempt START | "
+            f"source={self.occupancy_source} | "
+            f"service_day={service_day}"
+        )
+
+        if service_day is None:
+            print("⚠️ [ENV] No service_day found. Skipping quantum occupancy.")
+            return
+
+        column_map = {
+            "quantum_qru": "y_pred_QRU",
+            "quantum_lstm": "y_pred_LSTM",
+        }
+
+        pred_column = column_map.get(self.occupancy_source)
+        if pred_column is None:
+            print(
+                f"⚠️ [ENV] Unknown occupancy_source={self.occupancy_source}. "
+                f"Skipping quantum override."
+            )
+            return
+
+        node_predictions = defaultdict(list)
+
+        # ===============================
+        # Load quantum predictions
+        # ===============================
+        for route_id in self.quantum_routes:
+            route_dir = os.path.join(self.quantum_data_path, route_id)
+
+            if not os.path.isdir(route_dir):
+                print(f"⚠️ [ENV] Quantum route dir not found | route={route_id}")
+                continue
+
+            csv_files = [f for f in os.listdir(route_dir) if f.endswith(".csv")]
+            if not csv_files:
+                print(f"⚠️ [ENV] No quantum CSV found | route={route_id}")
+                continue
+
+            csv_path = os.path.join(route_dir, csv_files[0])
+
+            print(
+                f"⚛️ [ENV] Loading quantum CSV | "
+                f"route={route_id} | file={csv_files[0]}"
+            )
+
+            try:
+                df = pd.read_csv(csv_path)
+            except Exception as e:
+                print(f"⚠️ [ENV] Failed to read {csv_path}: {e}")
+                continue
+
+            day_df = df[df["service_day"] == service_day]
+            if day_df.empty:
+                print(
+                    f"⚠️ [ENV] No quantum rows for "
+                    f"route={route_id} | day={service_day}"
+                )
+                continue
+
+            if route_id not in self.real_routes:
+                print(f"⚠️ [ENV] route_id={route_id} not found in real_routes")
+                continue
+
+            path = self.real_routes[route_id]
+
+            # ===============================
+            # Map pt_sequence → node_id
+            # Normalize occupancy
+            # ===============================
+            for _, row in day_df.iterrows():
+                seq = int(row["pt_sequence"]) - 1
+                if seq < 0 or seq >= len(path):
+                    continue
+
+                value = row[pred_column]
+                if pd.isna(value):
+                    continue
+
+                node_id = int(path[seq])
+
+                raw_passengers = float(value)
+                occupancy_norm = min(raw_passengers / BUS_CAPACITY, 1.0)
+
+                node_predictions[node_id].append(occupancy_norm)
+
+                # 🔬 Strong debug (sampled)
+                if len(node_predictions[node_id]) == 1:
+                    print(
+                        f"🧪 [Q-OCC RAW→NORM] "
+                        f"day={service_day} | "
+                        f"route={route_id} | "
+                        f"node={node_id} | "
+                        f"raw={raw_passengers:.2f} | "
+                        f"norm={occupancy_norm:.4f}"
+                    )
+
+        # ===============================
+        # Apply overrides
+        # ===============================
+        if not node_predictions:
+            print(
+                f"⚠️ [ENV] No quantum node-level data for {service_day}. "
+                f"Using classical occupancy."
+            )
+            return
+
+        overridden_nodes = 0
+        for node, values in node_predictions.items():
+            self.occupancy_rate[node] = sum(values) / len(values)
+            overridden_nodes += 1
+
+        print(
+            f"✅ [ENV] Quantum occupancy applied | "
+            f"source={self.occupancy_source} | "
+            f"nodes_updated={overridden_nodes}"
+        )
 
 
 # This is the base class for reward classes
@@ -969,9 +1170,9 @@ class DefaultReward(RewardBaseClass):
 
         # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.7,        # less than 1 to not dominate
-            "uptime_bonus": 0.4,
-            "sync_score": 0.7,         
+            "occ_penalty": 0.5,        # less than 1 to not dominate
+            "uptime_bonus": 0.7,
+            "sync_score": 0.5,         
             "energy_efficiency": 0.6
         }
 
@@ -1169,6 +1370,7 @@ class DefaultReward(RewardBaseClass):
 
         # --- 5) garantia de contrato e estabilidade ---
         reward = float(np.clip(reward, -1.0, 1.0))
+        
         return reward
 
     def getRewardSoftMin(

@@ -91,10 +91,10 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env = parallel_env(
             network=G,
             actions_amount=3,
-            agents_per_route=4, # Number of agents sharing the same route
-            use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
+            agents_per_route=1, # Number of agents sharing the same route
+            use_only_mean_data=1, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
-            num_agents=20,
+            num_agents=5,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
@@ -205,7 +205,7 @@ class RLlibSuntBus(MultiAgentEnv):
         infos = {a: info[a] for a in self.agents}
 
         # Mantém a lista de agentes estável até o próximo reset (não remova no meio do episódio)
-        # if dones["__all__"]:  # nada a fazer aqui; reset tratará na próxima chamada
+        # if dones["__all__"]: # nada a fazer aqui; reset tratará na próxima chamada
 
         return obs, rewards, dones, infos
 
@@ -307,10 +307,10 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 500000},  # adjust as needed
+        "stop": {"timesteps_total": 400000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 32,     # adjust as needed
+        "num_workers": 20,     # adjust as needed
         "share_policy": "individual",
     }
 
