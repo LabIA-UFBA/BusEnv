@@ -95,6 +95,7 @@ class RLlibSuntBus(MultiAgentEnv):
             use_only_mean_data=1, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
             num_agents=5,
+            use_rain = True,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
@@ -310,7 +311,7 @@ def main():
         "stop": {"timesteps_total": 400000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 20,     # adjust as needed
+        "num_workers": 32,     # adjust as needed
         "share_policy": "individual",
     }
 

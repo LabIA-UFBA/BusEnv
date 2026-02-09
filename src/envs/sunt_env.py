@@ -24,7 +24,7 @@ class parallel_env(ParallelEnv):
     # avg_travel_time_AB, future_demand_at_B, occupancy_rate, uptime_normalized: dicts with precomputed data
     # real_routes: dict mapping agent_id to a fixed route (list of nodes)
     # route_metadata: dict with metadata for each route (optional)
-    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, agents_per_route=None,
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, use_rain: bool = False, agents_per_route=None,
                 use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
@@ -137,7 +137,7 @@ class parallel_env(ParallelEnv):
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
 
-        self.occupancy_source = "quantum_lstm" # "real" | "quantum_qru" | "quantum_lstm"
+        self.occupancy_source = "real" # "real" | "quantum_qru" | "quantum_lstm"
 
         self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
 
@@ -183,6 +183,32 @@ class parallel_env(ParallelEnv):
         
         self.use_only_mean_data = use_only_mean_data   # 1 = use only mean data, 0 = use daily data
 
+        # ==== Rain variables ====
+
+        # --- Climate / Rain control ---
+        self.use_rain = use_rain   
+        self.current_is_raining = False 
+
+        # --- Climate data (Rain) ---
+        if self.use_rain:
+            # If the component is up, then we use it 
+            with open(
+                '/mnt/ssd1/wesley/BusEnv/src/training_observation/climate_data/climate_data_2.pkl',
+                'rb'
+            ) as f:
+                self.climate_data = pickle.load(f)
+            print("RAIN TRUE, DADOS CARREGADOS EM", self.climate_data)
+        else:
+            # When theres is no use of the rain
+            self.climate_data = None
+
+        self.last_rain_eff = {agent: 0.0 for agent in self.agents}
+
+        self.reward_type = "raining" # normal || raining
+
+        self.date = None
+
+
         # Create metrics file if it doesn't exist
         if not os.path.exists(self.metrics_file):
             with open(self.metrics_file, "w", newline="") as f:
@@ -195,7 +221,7 @@ class parallel_env(ParallelEnv):
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
 
-        self.debug_quantum = True   # DEBUG MODE ON
+        self.debug_quantum = False   # DEBUG MODE ON
 
 
 
@@ -208,6 +234,18 @@ class parallel_env(ParallelEnv):
         if seed is not None:
             self.np_random, _ = gym.utils.seeding.np_random(seed)
 
+        # --- Defensive date initialization ---
+        if not hasattr(self, "date") or self.date is None:
+            if hasattr(self, "daily_files") and len(self.daily_files) > 0:
+                first_file = self.daily_files[self.current_day_index]
+                self.date = (
+                    first_file
+                    .replace("daily_data_", "")
+                    .replace(".pkl", "")
+                )
+            else:
+                self.date = "1970-01-01"  # absolut fallback 
+
         # --- Inicialização persistente ---
         if not hasattr(self, "current_day_index"):
             self.current_day_index = 0
@@ -218,7 +256,7 @@ class parallel_env(ParallelEnv):
         if not hasattr(self, "sim_done"):
             self.sim_done = False
 
-        # --- Estruturas básicas ---
+        # --- basic structure ---
         self.agents = self.possible_agents[:]
         self.agent_done = {a: False for a in self.possible_agents}
         self.states = {}
@@ -252,8 +290,10 @@ class parallel_env(ParallelEnv):
             self.simulated_days += 1
             next_file = self.daily_files[self.current_day_index]
             next_date = next_file.replace("daily_data_", "").replace(".pkl", "")
+            self.date = next_date
             print(f"\n🔁 [ENV] Advancing to next day: {next_date} ({self.current_day_index + 1}/{self.total_days})")
             print(f"📆 [ENV] Total simulated days so far: {self.simulated_days}")
+            print("self.date used only when the raining is activate", self.date)
             self.day_done = False  # reset flag
             self.agents_finished_previous_day = False # reset flag
 
@@ -264,6 +304,14 @@ class parallel_env(ParallelEnv):
             print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
             self._use_fallbacks()
 
+        # --- Climate / Rain: reset daily state ---
+        if self.use_rain:
+            # Initial weather conditions of the day (6:00)
+            self.current_is_raining = False  # will be updated by agent if necessary
+        else:
+            # rain off → it never rains
+            self.current_is_raining = False
+        
         # --- Initialization of fixed routes (if they don't already exist) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
             self.fixed_agent_routes = {}
@@ -373,6 +421,25 @@ class parallel_env(ParallelEnv):
             travel_time = self.avg_travel_time_AB.get((initial, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
+            # --- Climate / Rain: initial observation ---
+            if self.use_rain and self.climate_data is not None:
+                time_sec = self.agent_times[agent]
+                hour_of_day = int(time_sec // 3600)
+                hour_str = f"{hour_of_day:02d}00 UTC"
+
+                date_str = str(self.date).replace('-', '/')
+                row = self.climate_data[
+                    (self.climate_data['date'] == date_str) &
+                    (self.climate_data['hour'] == hour_str)
+                ]
+
+                is_raining = False
+                if not row.empty:
+                    is_raining = row['precip'].iloc[0] > 0.0
+            else:
+                # Rain off
+                is_raining = False
+
             obs_array = np.array([
                 self.agent_times[agent] / (24 * 60 * 60),
                 self.agent_states[agent]["occupancy"],
@@ -382,6 +449,7 @@ class parallel_env(ParallelEnv):
                 1.0 if self.agent_states[agent]["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(initial)],
                 self.node_to_idx[str(next_node)],
+                1.0 if is_raining else 0.0,
             ], dtype=np.float32)
 
             clipped_obs = np.clip(
@@ -493,6 +561,26 @@ class parallel_env(ParallelEnv):
             idx = state["route_idx"]
             curr_node = route[idx]
 
+            # --- Climate / Rain: check current weather ---
+            if self.use_rain and self.climate_data is not None:
+                time_sec = self.agent_times[agent]
+                hour_of_day = int(time_sec // 3600)
+                hour_str = f"{hour_of_day:02d}00 UTC"
+
+                date_str = self.date.replace('-', '/')
+                row = self.climate_data[
+                    (self.climate_data['date'] == date_str) &
+                    (self.climate_data['hour'] == hour_str)
+                ]
+
+                is_raining = False
+                if not row.empty:
+                    is_raining = row['precip'].iloc[0] > 0.0
+            else:
+                # Rain off
+                is_raining = False
+
+
             # === ACTION 0: WAIT ===
             if action == 0:
                 if action == 0 and self.steps[agent] % 20 == 0:
@@ -593,12 +681,13 @@ class parallel_env(ParallelEnv):
                     self.headways[next_node] = []
                 self.headways[next_node].append(self.agent_times[agent])
 
+                """
                 if len(self.headways[next_node]) > 1:
                     print(
                         f"[HEADWAY][node {next_node}] "
                         f"times={sorted(self.headways[next_node])}"
                     )
-
+                """
 
                 reward = self.reward.getReward(
                     new_state=next_node,
@@ -610,8 +699,28 @@ class parallel_env(ParallelEnv):
                     expected_time=self.expected_times[agent],
                     delay=0,
                     agent_state=state,
-                    headways=self.headways[next_node]
+                    headways=self.headways[next_node],
+                    is_raining=is_raining,
+                    reward_type=self.reward_type,
+                    last_rain_eff=self.last_rain_eff.get(agent, 0.0)
                 )
+                
+                self.last_rain_eff[agent] = self.reward._efficiency_component(
+                    float(self.estimated_times[agent]),
+                    float(self.expected_times[agent])
+                )
+
+                if self.episode_step_counter % 100 == 0:
+                    print(
+                        f"[STEP→REWARD] "
+                        f"agent={agent} | "
+                        f"action={action} | "
+                        f"node={curr_node}->{next_node} | "
+                        f"time={self.agent_times[agent]:.0f}s | "
+                        f"reward={reward:.3f}"
+                    )
+
+
 
                 """
                 print(
@@ -709,12 +818,13 @@ class parallel_env(ParallelEnv):
                 self.node_occupancy[current_pos] = []
             self.node_occupancy[current_pos].append(agent)
 
+            """
             if len(self.node_occupancy[current_pos]) > 1:
                 print(
                     f"[OCCUPANCY] node={current_pos} "
                     f"agents={self.node_occupancy[current_pos]}"
                 )
-
+            """
 
             #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
                # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
@@ -764,6 +874,7 @@ class parallel_env(ParallelEnv):
                 1.0 if state["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(curr_node)],
                 self.node_to_idx[str(next_node)],
+                1.0 if is_raining else 0.0,
             ], dtype=np.float32)
 
             observations[agent] = np.clip(
@@ -849,7 +960,8 @@ class parallel_env(ParallelEnv):
                 0.0,    # uptime
                 0.0,    # maintenance_status
                 0.0,    # curr_node_id
-                0.0     # next_node_id
+                0.0,    # next_node_id
+                0.0     # is_raining (0 ou 1)
             ], dtype=np.float32),
             high=np.array([
                 1.0,    # time_of_day_norm
@@ -859,7 +971,8 @@ class parallel_env(ParallelEnv):
                 1.0,    # uptime
                 1.0,    # manutenção ok
                 2e9,    # curr_node_id
-                2e9     # next_node_id
+                2e9,    # next_node_id
+                1.0     # is_raining (0 ou 1)
             ], dtype=np.float32)
         )
 
@@ -1232,7 +1345,8 @@ class DefaultReward(RewardBaseClass):
         self,
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
-        agent_state=None, headways=None
+        agent_state=None, headways=None, is_raining=False, 
+        reward_type="normal", last_rain_eff=0.0 
     ):
         # Normalized components
         occ_pen = 0.0
@@ -1245,7 +1359,38 @@ class DefaultReward(RewardBaseClass):
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
         sync = self._sync_component(headways or [])
-        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # --- Base efficiency ---
+        eff_base = self._efficiency_component(float(estimated_time), float(expected_time))
+        eff = eff_base
+        rain_bonus = 0.0
+
+        # --- Rain effect on efficiency (Rain Reward logic) ---
+        if reward_type != "normal" and is_raining:
+            rain_strength = 0.2        # intensidade da chuva
+            memory_decay = 0.7         # quanto a memória pesa (0..1)
+
+            # penalização base (sempre suave)
+            eff = eff_base * (1.0 - rain_strength)
+
+            # teto baseado na memória (SOFT, não zera)
+            eff_cap = 1.0 - memory_decay * last_rain_eff
+            eff = min(eff, eff_cap)
+
+            # bônus por melhora relativa (igual Código B)
+            if eff_base > last_rain_eff:
+                rain_bonus += 0.2
+
+        eff = float(np.clip(eff, 0.0, 1.0))
+        
+        if reward_type == "raining" and np.random.rand() < 0.005:
+            print(
+                f"[RAIN DBG] raining={is_raining} "
+                f"eff_base={eff_base:.3f} "
+                f"eff_used={eff:.3f} "
+                f"last_rain_eff={last_rain_eff:.3f}"
+            )
+
 
         #print("\n--- Componentes de Recompensa (Step) ---")
         #print(f"  | Ocupação (occ_pen): {occ_pen:.4f}")
@@ -1258,9 +1403,6 @@ class DefaultReward(RewardBaseClass):
         assert 0.0 <= sync <= 1.0, f"sync fora do range: {sync}"
         assert 0.0 <= eff <= 1.0, f"eff fora do range: {eff}"
 
-        w = self.reward_weights
-        #print("  | Pesos:", w)
-
         # Weighted combination (keeping each term in [-1, +1])
         # occ_pen enters with NEGATIVE sign
         w = self.reward_weights
@@ -1268,7 +1410,7 @@ class DefaultReward(RewardBaseClass):
             -w["occ_penalty"] * occ_pen +
              w["uptime_bonus"] * uptime + # uptime esta sendo um positivo que esta tendendo a zero, enquanto ele vai
              w["sync_score"] * sync +
-             w["energy_efficiency"] * eff
+             w["energy_efficiency"] * eff * (2.0 if is_raining else 1.0) + rain_bonus # w["energy_efficiency"] * eff
         )
 
         # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
@@ -1282,6 +1424,29 @@ class DefaultReward(RewardBaseClass):
         # reward += 0.2
         # print(f"\n--- Recompensa Final Normalizada: {final_reward:.4f} ---")
         reward = float(np.clip(reward, -1.0, 1.0))
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[EFF CHECK] "
+                f"rain={is_raining} | "
+                f"eff_base={eff_base:.3f} | "
+                f"eff_used={eff:.3f} | "
+                f"est={estimated_time:.1f} | "
+                f"exp={expected_time:.1f}"
+            )
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[REWARD BREAKDOWN] "
+                f"occ={occ_pen:.3f} | "
+                f"uptime={uptime:.3f} | "
+                f"sync={sync:.3f} | "
+                f"eff={eff:.3f} | "
+                f"rain={is_raining} | "
+                f"bonus={rain_bonus:.3f} | "
+                f"final={reward:.3f}"
+            )
+
 
         if np.random.rand() < 0.005:  # ~0.5% dos steps
             print(
