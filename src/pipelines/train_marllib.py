@@ -95,7 +95,7 @@ class RLlibSuntBus(MultiAgentEnv):
             use_only_mean_data=1, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
             num_agents=5,
-            use_rain = True,
+            use_rain = False,
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,

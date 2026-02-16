@@ -27,7 +27,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("hatrpo")
+algos=("mappo")
 
 # Funcionaram 100%
 # IA2C 
@@ -42,7 +42,7 @@ algos=("hatrpo")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade) 
-runs_per_algo=1
+runs_per_algo=25
 
 # Pastas de saída
 LOG_DIR="${ROOT_DIR}/logs"

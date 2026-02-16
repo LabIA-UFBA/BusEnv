@@ -187,7 +187,6 @@ class parallel_env(ParallelEnv):
 
         # --- Climate / Rain control ---
         self.use_rain = use_rain   
-        self.current_is_raining = False 
 
         # --- Climate data (Rain) ---
         if self.use_rain:
@@ -204,7 +203,7 @@ class parallel_env(ParallelEnv):
 
         self.last_rain_eff = {agent: 0.0 for agent in self.agents}
 
-        self.reward_type = "raining" # normal || raining
+        self.reward_type = "normal" # normal || raining
 
         self.date = None
 
@@ -303,14 +302,6 @@ class parallel_env(ParallelEnv):
         except Exception as e:
             print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
             self._use_fallbacks()
-
-        # --- Climate / Rain: reset daily state ---
-        if self.use_rain:
-            # Initial weather conditions of the day (6:00)
-            self.current_is_raining = False  # will be updated by agent if necessary
-        else:
-            # rain off → it never rains
-            self.current_is_raining = False
         
         # --- Initialization of fixed routes (if they don't already exist) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
@@ -1219,7 +1210,7 @@ class parallel_env(ParallelEnv):
 
                 node_predictions[node_id].append(occupancy_norm)
 
-                # 🔬 Strong debug (sampled)
+                # Strong debug (sampled)
                 if len(node_predictions[node_id]) == 1:
                     print(
                         f"🧪 [Q-OCC RAW→NORM] "
