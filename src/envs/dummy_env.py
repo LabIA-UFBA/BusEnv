@@ -1,0 +1,1906 @@
+import functools
+from pettingzoo import ParallelEnv
+import networkx as nx
+from gym import spaces
+import numpy as np
+import random
+import pickle
+import gym.utils.seeding  # import seeding
+from gym.spaces import Discrete
+import csv
+import os
+import pandas as pd
+from collections import defaultdict
+
+class parallel_env(ParallelEnv):
+    metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
+
+    # network: A networkx.Graph type object representing the graph
+    # actions_amount: The number of possible actions (generally, the maximum number of neighbors a node can have)
+    # stopClass: Custom stop class (optional)
+    # rewardClass: Custom reward class (optional)
+    # initial_nodes, target_nodes: start and target nodes (if not passed, they are chosen randomly)
+    # render_mode: "human" or "rgb_array" (optional)
+    # avg_travel_time_AB, future_demand_at_B, occupancy_rate, uptime_normalized: dicts with precomputed data
+    # real_routes: dict mapping agent_id to a fixed route (list of nodes)
+    # route_metadata: dict with metadata for each route (optional)
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, agents_per_route=None,
+                use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
+                render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
+                occupancy_rate=None, uptime_normalized=None,
+                real_routes=None, route_metadata=None, risk_horizon_steps=5, enable_risk_feature=True):  
+
+        # --- Basic configuration ---
+        self.network = network
+        self.actions_amount = actions_amount
+        self.max_steps = max_steps 
+        self.render_mode = render_mode
+
+        # --- Agents ---
+        self._num_agents = num_agents
+        self.possible_agents = [f"agent_{i}" for i in range(self._num_agents)]
+        self.agents = self.possible_agents.copy()  # <- MARLlib needs this
+        self.agent_name_mapping = {agent: i for i, agent in enumerate(self.possible_agents)}
+
+        # --- Stop/Reward classes ---
+        self.stop = DefaultStopClass() if stopClass is None else stopClass
+        self.reward = DefaultReward() if rewardClass is None else rewardClass
+
+        # --- Node index mapping ---
+        self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)}  
+        self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
+
+        # --- Internal states per agent ---
+        self.states = {}
+        self.targets = {}
+        self.steps = {}
+        self.delays = {}
+        self.estimated_times = {}
+        self.expected_times = {}
+
+        self.initial_nodes = initial_nodes
+        self.target_nodes = target_nodes
+
+        # --- External data / features ---
+        self.avg_travel_time_AB = avg_travel_time_AB or {}
+        self.future_demand_at_B = future_demand_at_B or {}
+        self.occupancy_rate = occupancy_rate or {}
+        self.uptime_normalized = uptime_normalized or {}
+
+        # --- Global clock and statistics ---
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # Every agent starts at 6:00 AM 
+        self.headways = {}
+        self.sync_stats = {}
+
+        # --- Agent presence tracking ---
+        # Maps each node (stop) to the list of agents currently there
+        self.node_occupancy = {}  
+
+        # Stores last known positions of all agents (to detect proximity changes)
+        self.agent_positions = {agent: None for agent in self.possible_agents}
+
+        # Threshold (in seconds) for spacing between agents in the same route
+        self.min_headway_time = 300.0  # 5 minutes minimum gap between agents on same route
+
+
+        self.service_center_node = random.choice(list(self.network.nodes))
+
+        # --- Internal structure of agents ---
+        self.agent_states = {}
+        for agent_id in self.possible_agents:
+            self.agent_states[agent_id] = {
+                "location": None,  # current location of the agent
+                "occupancy": 0.0,
+                "uptime": 1.0,
+                "fuel": 100.0,
+                "maintenance_status": "ok", # can be "ok", "needs_service", etc.
+                "schedule": [],
+                "route": None,
+                "route_idx": 0,
+                "needs_service": False, # indicates if the agent needs maintenance
+                "going_forward": True, # indicates direction along the route
+                "status": "active",  # state is always active
+            }
+
+        # --- Reward parameters ---
+        self.reward_weights = {
+            "occ_penalty": 1.0,
+            "uptime_bonus": 1.0,
+            "sync_score": 1.0,
+            "energy_efficiency": 1.0
+        }
+        self.occupancy_range = (0.6, 0.9)
+
+        # --- Risk feature (forecast-based) ---
+        # Computes the probability of leaving the ideal occupancy range in the next N route-steps
+        # (no time-of-day computation; purely step-ahead along the route)
+        self.enable_risk_feature = bool(enable_risk_feature)
+        self.risk_horizon_steps = int(risk_horizon_steps)
+        # route_id -> {seq_idx(0-based along route): predicted occupancy_norm in [0,1]}
+        self.occ_pred_by_route_seq = defaultdict(dict)
+
+        # --- Observation and action spaces ---
+        self.observation_spaces = {
+            agent: self.observation_space(agent) for agent in self.possible_agents
+        }
+        # Ensure the action space supports what we need
+        self.action_spaces = {
+            agent: self.action_space(agent) for agent in self.possible_agents
+        }
+
+        # --- Defaults / limits ---
+        if self.avg_travel_time_AB:
+            self.default_travel_time = np.mean(list(self.avg_travel_time_AB.values()))
+        else:
+            self.default_travel_time = 1.0
+
+        # --- Daily Data Control ---
+        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_files = sorted([
+            f for f in os.listdir(self.daily_data_path)
+            if f.startswith("daily_data_") and f.endswith(".pkl")
+        ])
+        self.current_day_index = 0
+        self.current_service_day = 0
+        self.total_days = len(self.daily_files)
+        print(f"[DAILY DATA] {self.total_days} days detected for training.")
+
+        self.occupancy_source = "quantum_lstm" # "real" | "quantum_qru" | "quantum_lstm"
+
+        self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
+
+        self.quantum_routes = [
+            "20001_310_1",
+            "20001_310_2",
+            "20002_1320_1",
+            "20002_1320_10",
+            "20002_1367_5",
+        ]
+
+        # --- Simulation control flags ---
+        self._advance_day = False
+        self.day_done = False          # Ensures consistent state for daily progression
+        self.sim_done = False          # Used for final termination when all days end
+        self.simulated_days = 0        # Total simulated days counter
+
+        # --- Limits and constants ---
+        self.max_travel_time = 3250.0
+        self.max_capacity = 80
+
+        # --- Route handling ---
+        self.real_routes = real_routes or {}
+        self.route_metadata = route_metadata or {}
+        self.agent_routes = {}
+        self.agents_per_route = agents_per_route  # Number of agents sharing the same route
+        self.fixed_agent_routes = None
+
+        # --- Coordination control for agents on same route ---
+        # Stores the last time an agent from each route advanced (for coordination)
+        self.route_last_move_time = {}
+
+        # Controls which agent is the "leader" on each route (the first to move)
+        self.route_leader = {}
+
+
+        # --- Logging and metrics ---
+        self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
+        self._printed_day_end = set()
+        self.last_logged_day = -1
+        self.episode_step_counter = 0  # Counts total environment steps per episode
+        
+        
+        self.use_only_mean_data = use_only_mean_data   # 1 = use only mean data, 0 = use daily data
+
+        # Create metrics file if it doesn't exist
+        if not os.path.exists(self.metrics_file):
+            with open(self.metrics_file, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["episode", "env_steps", "mean_reward", "total_reward", "fairness"])
+        
+        # --- Fallback averages for missing daily data ---
+        self.avg_travel_time_AB_mean = avg_travel_time_AB or {} 
+        self.future_demand_at_B_mean = future_demand_at_B or {} 
+        self.occupancy_rate_mean = occupancy_rate or {}
+        self.uptime_normalized_mean = uptime_normalized or {}
+
+        self.debug_quantum = True   # DEBUG MODE ON
+
+
+
+    @property
+    def num_agents(self):
+        return self._num_agents
+    
+    def reset(self, seed=None, options=None):
+        print("================ RESETTING ENVIRONMENT ================")
+        if seed is not None:
+            self.np_random, _ = gym.utils.seeding.np_random(seed)
+
+        # --- Inicialização persistente ---
+        if not hasattr(self, "current_day_index"):
+            self.current_day_index = 0
+        if not hasattr(self, "simulated_days"):
+            self.simulated_days = 0
+        if not hasattr(self, "day_done"):
+            self.day_done = False
+        if not hasattr(self, "sim_done"):
+            self.sim_done = False
+
+        # --- Estruturas básicas ---
+        self.agents = self.possible_agents[:]
+        self.agent_done = {a: False for a in self.possible_agents}
+        self.states = {}
+        self.targets = {}
+        self.steps = {}
+        self.delays = {}
+        self.estimated_times = {}
+        self.expected_times = {}
+        self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # start at 6 AM every new day
+        self.headways = {}
+        self.sync_stats = {}
+        self.agent_states = {}
+        self.infos = {}
+        observations = {}
+
+        # --- Reset agent coordination and presence tracking ---
+        self.node_occupancy = {node: [] for node in self.network.nodes}  # which agents are currently at each node
+        self.agent_positions = {agent: None for agent in self.possible_agents}
+        self.route_last_move_time = {route_id: 0.0 for route_id in self.real_routes.keys()}
+        self.route_leader = {}  # will be updated dynamically in step()
+        self.episode_step_counter = 0
+
+        # --- Move on to the next day if the previous one has ended ---
+        print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
+        print(f"📆 [ENV] Total days in simulation: {self.total_days}")
+        print(f"🔄 [ENV] Day done flag: {self.day_done}")
+        print(f"🗓️ [ENV] Total simulated days so far: {self.simulated_days}")
+
+        if (self.day_done or getattr(self, "agents_finished_previous_day", False)) and self.total_days > 0:
+            self.current_day_index = (self.current_day_index + 1) % self.total_days
+            self.simulated_days += 1
+            next_file = self.daily_files[self.current_day_index]
+            next_date = next_file.replace("daily_data_", "").replace(".pkl", "")
+            print(f"\n🔁 [ENV] Advancing to next day: {next_date} ({self.current_day_index + 1}/{self.total_days})")
+            print(f"📆 [ENV] Total simulated days so far: {self.simulated_days}")
+            self.day_done = False  # reset flag
+            self.agents_finished_previous_day = False # reset flag
+
+        # --- Loads daily data ---
+        try:
+            self.load_current_day_data()
+        except Exception as e:
+            print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
+            self._use_fallbacks()
+
+        # --- Initialization of fixed routes (if they don't already exist) ---
+        if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
+            self.fixed_agent_routes = {}
+            num_agents = len(self.agents)
+            routes = list(self.real_routes.items())
+
+            # CHANGE: function to decide number of agents per route (based on length)
+            def _agents_for_path(path_len: int, default_agents: int) -> int:
+                if path_len < 15:
+                    return 1
+                if path_len <= 30:
+                    return 1 # Antes era 2 
+                # >30 uses the user's default (ensures >=1)
+                return max(1, int(default_agents))
+
+            default_agents_per_route = getattr(self, "agents_per_route", 1)
+
+            agent_routes_assignment = []
+            agent_idx = 0
+
+            # CHANGE: dynamic allocation based on route length
+            for trip_id, path in routes:
+                if agent_idx >= num_agents:
+                    break
+
+                k = _agents_for_path(len(path), default_agents_per_route)
+                # does not exceed the total remaining agents
+                k = min(k, num_agents - agent_idx)
+                if k <= 0:
+                    break
+
+                assigned_agents = self.agents[agent_idx:agent_idx + k]
+                agent_routes_assignment.append((trip_id, path, assigned_agents))
+
+                for agent in assigned_agents:
+                    self.fixed_agent_routes[agent] = path
+
+                # DEBUG: show decision per route
+                route_preview = " → ".join(str(n) for n in path[:5]) + (" → ..." if len(path) > 5 else "")
+                print(f"[ROUTE SPLIT] trip={trip_id} | len={len(path)} | assigned={k} | agents={', '.join(assigned_agents)} | path={route_preview}")
+
+                agent_idx += k
+
+            print("\n=== [ROUTE ASSIGNMENT DEBUG - INITIALIZED ONCE] ===")
+            for trip_id, path, assigned_agents in agent_routes_assignment:
+                route_preview = " → ".join(str(n) for n in path[:5])
+                if len(path) > 5:
+                    route_preview += " → ..."
+                print(f"Trip ID: {trip_id:<10} | Agents: {', '.join(assigned_agents)} | "
+                      f"Route length: {len(path):<3} | Path: {route_preview}")
+            print("=====================================================\n")
+
+        # --- Usa sempre as rotas fixas ---
+        self.agent_routes = self.fixed_agent_routes
+
+        # --- Inicializa estados de cada agente ---
+        for agent in self.agents:
+            if agent not in self.agent_routes:
+                raise ValueError(f"[RESET ERROR] Agent {agent} did not receive a route!")
+
+            path = self.agent_routes[agent]
+            if len(path) < 2:
+                raise ValueError(f"Invalid route for {agent}: {path}")
+
+            initial = path[0]
+            target = path[-1]
+
+            self.agent_states[agent] = {
+                "location": initial,
+                "occupancy": int(self.occupancy_rate.get(int(initial), 0.0)),
+                "uptime": float(self.uptime_normalized.get(initial, 1.0)),
+                "fuel": 100.0,
+                "maintenance_status": "ok",
+                "schedule": [],
+                "route": path,
+                "route_id": None,
+                "route_idx": 0,
+                "status": "active",
+                "going_forward": True,
+            }
+
+            # --- Register initial position for coordination ---
+            self.agent_positions[agent] = initial
+            if initial not in self.node_occupancy:
+                self.node_occupancy[initial] = []
+            self.node_occupancy[initial].append(agent)
+
+            # If this is the first agent on this route, mark as leader
+            route_id = [k for k, v in self.real_routes.items() if v == path]
+            if route_id:
+                rid = route_id[0]
+                self.agent_states[agent]["route_id"] = rid
+                if rid not in self.route_leader:
+                    self.route_leader[rid] = agent
+
+
+            self.states[agent] = initial
+            self.targets[agent] = target
+            self.steps[agent] = 0
+            self.estimated_times[agent] = 0
+            self.delays[agent] = {}
+
+            self.expected_times[agent] = sum(
+                self.avg_travel_time_AB.get((path[i], path[i + 1]), self.default_travel_time)
+                for i in range(len(path) - 1)
+            )
+
+            next_node = path[1]
+            travel_time = self.avg_travel_time_AB.get((initial, next_node), self.default_travel_time)
+            normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
+
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
+            obs_array = np.array([
+                self.agent_times[agent] / (24 * 60 * 60),
+                self.agent_states[agent]["occupancy"],
+                normalized_travel_time,
+                self.future_demand_at_B.get(next_node, 0.0),
+                self.uptime_normalized.get(agent, 1.0),
+                1.0 if self.agent_states[agent]["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[str(initial)],
+                self.node_to_idx[str(next_node)],
+                occ_risk,
+            ], dtype=np.float32)
+
+            clipped_obs = np.clip(
+                obs_array,
+                self.observation_space(agent).low,
+                self.observation_space(agent).high,
+            )
+
+            observations[agent] = clipped_obs
+            self.infos[agent] = {
+                "chosen_route": path,
+                "expected_time": self.expected_times[agent],
+                "status": "active",
+            }
+
+        # --- Métricas de episódio ---
+        self.current_episode_metrics = {
+            "rewards": {agent: 0.0 for agent in self.agents},
+            "steps": {agent: 0 for agent in self.agents},
+            "done": False
+        }
+        
+        # Validação de observação de 1 agente especifico, primeiro da fila 
+        sample_agent = self.agents[0] 
+        print("\n[OBS DEBUG - RESET]")
+        print(f"Agent: {sample_agent}")
+        print(f"Raw obs: {obs_array}")
+        print(f"Clipped obs: {clipped_obs}")
+        print(f"Obs space low: {self.observation_space(sample_agent).low}")
+        print(f"Obs space high: {self.observation_space(sample_agent).high}")
+
+        print("\n[TIME DEBUG]")
+        print(f"Simulated days: {self.simulated_days}")
+        print(f"Current day index: {self.current_day_index}")
+        print(f"Agent start time (seconds): {list(self.agent_times.items())[:3]}")
+
+
+
+        # --- Debug: presence summary ---
+        active_points = {node: agents for node, agents in self.node_occupancy.items() if agents}
+        print(f"📍 [RESET DEBUG] Agent initial positions per node: {active_points}")
+
+        print("✅ [RESET COMPLETE] All agents initialized with status='active'.")
+        print("\n=== [RESET SUMMARY] ===")
+        print(f"Agents: {len(self.agents)}")
+        print(f"Routes: {len(set(tuple(r) for r in self.agent_routes.values()))}")
+        print(f"Leaders per route: {self.route_leader}")
+        print("Agent → Route length:")
+        for agent, route in self.agent_routes.items():
+            print(f"  {agent}: len={len(route)} start={route[0]} end={route[-1]}")
+        print("=======================\n")
+        return observations
+    
+    def step(self, actions):
+        """
+        Executes a multi-agent simulation step.
+        Includes active PARK-blocking logic so agents can only park after 24h,
+        travel time clamping, and robust day-end handling.
+        """
+
+        # --- Output containers ---
+        observations = {}
+        rewards = {}
+        terminations = {}
+        truncations = {}
+        infos = {}
+        self.episode_step_counter += 1
+
+
+        # Safety: ensure agent_states exists
+        if not hasattr(self, "agent_states"):
+            raise RuntimeError("agent_states not initialized. Call reset() before step().")
+
+        # Global limits
+        TRAVEL_TIME_CAP = 1800.0   # 30 minutes max per edge
+        END_OF_DAY = 24 * 3600.0      # End of the day in seconds
+
+        # --- Reset dynamic presence tracking for this step ---
+        for node in self.node_occupancy:
+            self.node_occupancy[node] = []  # clear per-step occupancy
+
+        if self.episode_step_counter % 50 == 0:
+            print(f"\n--- [STEP {self.episode_step_counter}] ---")
+
+
+        # Record latest positions as we go
+        step_node_positions = {}
+
+
+        # Loop through all possible agents (fixed set)
+        for agent in self.possible_agents:
+            state = self.agent_states[agent]
+
+            # Skip finished agents
+            if state.get("status") == "finished":
+                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
+                rewards[agent] = 0.0
+                terminations[agent] = False
+                truncations[agent] = False
+                infos[agent] = {"status": "finished"}
+                continue
+
+            # Get action (default = WAIT)
+            action = actions.get(agent, 0)
+
+            # --- Active agent ---
+            self.steps[agent] += 1
+            route = state["route"]
+            idx = state["route_idx"]
+            curr_node = route[idx]
+
+            # === ACTION 0: WAIT ===
+            if action == 0:
+                if action == 0 and self.steps[agent] % 20 == 0:
+                    print(f"[WAIT][{agent}] time={self.agent_times[agent]:.0f}s")
+                reward = 0 # Antes era  -0.1
+                elapsed = 60.0  # 1 minute wait
+                self.agent_times[agent] += elapsed
+                self.estimated_times[agent] += elapsed
+                state["uptime"] = max(state["uptime"] - elapsed / (12 * 3600), 0.0)
+                state["fuel"] = max(state["fuel"] - elapsed / 300.0, 0.0)
+
+            # === ACTION 1: MOVE ===
+            elif action == 1:
+                going_forward = state.get("going_forward", True)
+                route_length = len(route)
+
+                if going_forward:
+                    if idx + 1 < route_length:
+                        next_node = route[idx + 1]
+                        self.agent_states[agent]["route_idx"] += 1
+                    else:
+                        state["going_forward"] = False
+                        self.agent_states[agent]["route_idx"] -= 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
+                else:
+                    if idx > 0:
+                        self.agent_states[agent]["route_idx"] -= 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
+                    else:
+                        state["going_forward"] = True
+                        self.agent_states[agent]["route_idx"] += 1
+                        next_node = route[self.agent_states[agent]["route_idx"]]
+
+                # Clamp travel time to avoid large jumps
+                travel_time_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+                travel_time = min(travel_time_raw, TRAVEL_TIME_CAP)
+
+                self.agent_times[agent] += travel_time
+                self.estimated_times[agent] += travel_time
+
+                # Update occupancy
+                prev_occ = state.get("occupancy", 0.0)
+                if int(curr_node) in self.occupancy_rate:
+                    expected_occ = self.occupancy_rate[int(curr_node)]
+                    alpha = 0.5
+                    occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
+                    occupancy = max(0.0, min(occupancy, 1.0))
+
+                    # <<< DEBUG >>> QUANTUM OCCUPANCY USAGE
+                    if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                        print(
+                            f"🧪 [Q-OCC USED] day={self.current_day_index} | "
+                            f"step={self.episode_step_counter} | "
+                            f"agent={agent} | "
+                            f"node={curr_node} | "  
+                            f"prev={prev_occ:.4f} | "
+                            f"quantum_raw={expected_occ:.4f} | "
+                            f"used_clipped={occupancy:.4f} | "
+                            f"source={self.occupancy_source}"
+                        )
+
+                else:
+                    occupancy = prev_occ
+
+                state["occupancy"] = occupancy
+                # state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
+                travel_time_hors = travel_time / (12 * 3600)
+                state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
+                state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
+
+                self.states[agent] = next_node
+
+                """
+                print(
+                    f"[MOVE][{agent}] "
+                    f"{curr_node} → {next_node} | "
+                    f"route_idx={self.agent_states[agent]['route_idx']} | "
+                    f"time+={travel_time:.1f}s | "
+                    f"fuel={state['fuel']:.1f} | "
+                    f"uptime={state['uptime']:.3f}"
+                )
+
+              
+                # --- DEBUG AQUI ---
+                total_sec = int(self.agent_times[agent])
+                hours = total_sec // 3600
+                minutes = (total_sec % 3600) // 60
+
+                print(
+                    f"[DEBUG][{agent}] time={hours:02d}:{minutes:02d} | "
+                    f"estimated_time={self.estimated_times[agent]:.1f} | "
+                    f"expected_time={self.expected_times[agent]:.1f} | "
+                    f"node={next_node}"
+                )
+                """
+
+                if next_node not in self.headways:
+                    self.headways[next_node] = []
+                self.headways[next_node].append(self.agent_times[agent])
+
+                if len(self.headways[next_node]) > 1:
+                    print(
+                        f"[HEADWAY][node {next_node}] "
+                        f"times={sorted(self.headways[next_node])}"
+                    )
+
+
+                reward = self.reward.getReward(
+                    new_state=next_node,
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=self.headways[next_node]
+                )
+
+                """
+                print(
+                    f"[REWARD][{agent}] "
+                    f"node={next_node} | "
+                    f"est={self.estimated_times[agent]:.1f} | "
+                    f"exp={self.expected_times[agent]:.1f} | "
+                    f"headway_n={len(self.headways[next_node])} | "
+                    f"reward={reward:.3f}"
+                )
+                """
+
+                self.estimated_times[agent] = 0.0
+
+            # === ACTION 2: SERVICE CENTER ===
+            elif action == 2:
+                sc_node = self.get_nearest_service_center(curr_node)
+                try:
+                    path = nx.shortest_path(
+                        self.network,
+                        source=curr_node,
+                        target=sc_node,
+                        weight=lambda u, v, d: self.avg_travel_time_AB.get((u, v), self.default_travel_time)
+                    )
+
+                    total_travel_time = 0.0
+                    total_fuel_cost = 0.0
+                    for u, v in zip(path[:-1], path[1:]):
+                        edge_time_raw = self.avg_travel_time_AB.get((u, v), self.default_travel_time)
+                        edge_time = min(edge_time_raw, TRAVEL_TIME_CAP) * 0.3
+                        total_travel_time += edge_time
+                        total_fuel_cost += edge_time / 300.0
+
+                except nx.NetworkXNoPath:
+                    reward = 0 # antes era -10.0
+                else:
+                    if state["fuel"] < total_fuel_cost:
+                        reward = 0 # em vez de -20
+                        print("total_fuel_cost: ", total_fuel_cost)
+                        print("state[fuel]: ", state["fuel"])
+                        print("VEIO PRO SERVICE CENTER SEM CONDIÇÃO DE CHEGAR")
+                    else:
+                        self.agent_times[agent] += total_travel_time
+                        self.estimated_times[agent] += total_travel_time
+                        state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
+                        # total_travel_time_hors = total_travel_time / (12 * 3600)
+                        state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
+                        # state["uptime"] = max(1.0, state["uptime"] / (total_travel_time + 1e-8))
+                        state["fuel"] = 100.0
+                        state["uptime"] = 1.0
+                        state["maintenance_status"] = "ok"
+                        self.states[agent] = sc_node
+                        # reward = -1.0 * (1 + total_travel_time / 600.0) # antes era -1.0 * 
+                        reward = 0
+
+            # === INVALID ACTION ===
+            else:
+                reward = 0
+
+
+            assert 0.0 <= state["fuel"] <= 100.0, f"Fuel inválido: {state['fuel']}"
+            assert 0.0 <= state["uptime"] <= 1.0, f"Uptime inválido: {state['uptime']}"
+            assert self.agent_times[agent] >= 0.0
+
+            """
+            # padroniza a chave
+            node = self.states[agent]
+
+            # garante que exista lista
+            if node not in self.headways:
+                self.headways[node] = []
+
+            headways_list = self.headways[node]
+            
+            if should_calc_reward:
+                reward = self.reward.getReward(
+                    new_state=self.states[agent],
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=headways_list
+                )
+            """
+
+            # Presence and coordination tracking
+            current_pos = self.states[agent]
+            self.agent_positions[agent] = current_pos
+
+            if current_pos not in self.node_occupancy:
+                self.node_occupancy[current_pos] = []
+            self.node_occupancy[current_pos].append(agent)
+
+            if len(self.node_occupancy[current_pos]) > 1:
+                print(
+                    f"[OCCUPANCY] node={current_pos} "
+                    f"agents={self.node_occupancy[current_pos]}"
+                )
+
+
+            #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
+               # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
+
+            route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
+            if route_id:
+                rid = route_id[0]
+                self.route_last_move_time[rid] = self.agent_times[agent]
+
+            # === End-of-day to agents, putting the finished status ===
+            if self.agent_times[agent] >= END_OF_DAY:
+                print(
+                    f"[OBS ZEROED][END_OF_DAY] agent={agent} "
+                    f"time={self.agent_times[agent]:.0f}s "
+                    f"step={self.episode_step_counter}"
+                )
+                state["status"] = "finished"
+                observations[agent] = np.zeros_like(self.observation_space(agent).low, dtype=np.float32)
+                rewards[agent] = 0.0
+                terminations[agent] = False
+                truncations[agent] = False
+                infos[agent] = {"status": "finished", "reason": "24h_limit"}
+                continue
+
+            # === Observation update ===
+            route_idx = self.agent_states[agent]["route_idx"]
+            curr_node = self.states[agent]
+            next_node = route[route_idx + 1] if route_idx + 1 < len(route) else curr_node
+
+            tt_next_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
+            tt_next = min(tt_next_raw, TRAVEL_TIME_CAP)
+            normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
+
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
+            # === Observation update ===
+            if state.get("status") != "active":
+                print(
+                    f"[WARN] OBS about to be computed for non-active agent "
+                    f"{agent} status={state.get('status')}"
+                )
+
+            obs_array = np.array([
+                self.agent_times[agent] / (24 * 60 * 60),
+                state["occupancy"],
+                normalized_travel_time,
+                self.future_demand_at_B.get(next_node, 0.0),
+                state["uptime"],
+                1.0 if state["maintenance_status"] == "ok" else 0.0,
+                self.node_to_idx[str(curr_node)],
+                self.node_to_idx[str(next_node)],
+                occ_risk,
+            ], dtype=np.float32)
+
+            observations[agent] = np.clip(
+                obs_array,
+                self.observation_space(agent).low,
+                self.observation_space(agent).high
+            )
+
+            if not observations[agent].any():
+                print(
+                    f"[WARN][ZERO OBS AFTER CLIP] agent={agent} "
+                    f"time={self.agent_times[agent]:.0f}s "
+                    f"status={state.get('status')}"
+                )
+
+            rewards[agent] = reward
+            terminations[agent] = False
+            truncations[agent] = False
+            infos[agent] = {"status": "active"}
+
+            # Update route leader dynamically
+            if route_id:
+                rid = route_id[0]
+                leader = self.route_leader.get(rid)
+                if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
+                    self.route_leader[rid] = agent
+                    print(
+                        f"[LEADER CHANGE] route={rid} "
+                        f"new={agent} "
+                        f"time={self.agent_times[agent]:.0f}"
+                    )
+
+        # === Global post-processing ===
+        all_finished = all(self.agent_times[a] >= END_OF_DAY for a in self.possible_agents)
+
+        dones = {a: all_finished for a in self.possible_agents}
+        dones["__all__"] = all_finished
+
+        if all_finished:
+            print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
+            for a in self.possible_agents:
+                print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
+            self.day_done = True
+            self.agents_finished_previous_day = True
+        else:
+            self.day_done = False
+
+        if self.episode_step_counter % 50 == 0:
+            active_nodes = {node: ags for node, ags in self.node_occupancy.items() if ags}
+            #print(f"[DEBUG] Node occupancy snapshot: {active_nodes}")
+
+        
+        #print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
+        #    f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
+        #    f"| Done flag: {all_parked}")
+
+        if self.episode_step_counter % 100 == 0:
+            for a, obs in observations.items():
+                print(f"[OBS SNAPSHOT][{a}] {obs}")
+
+        if self.episode_step_counter % 50 == 0:
+            print("\n[STEP SUMMARY]")
+            for a in self.possible_agents:
+                print(
+                    f"  {a}: "
+                    f"status={self.agent_states[a].get('status')} | "
+                    f"time={self.agent_times[a]:.0f}s | "
+                    f"route_idx={self.agent_states[a]['route_idx']}"
+                )
+
+        return observations, rewards, dones, infos
+
+
+
+    @functools.lru_cache(maxsize=None)
+    def observation_space(self, agent):
+        return spaces.Box(
+            low=np.array([
+                0.0,    # time_of_day_norm
+                0.0,    # occupancy_rate
+                0.0,    # avg_travel_time_AB (normalizado)
+                0.0,    # future_demand_at_B
+                0.0,    # uptime
+                0.0,    # maintenance_status
+                0.0,    # curr_node_id
+                0.0,    # next_node_id
+                0.0     # occ_risk_out
+            ], dtype=np.float32),
+            high=np.array([
+                1.0,    # time_of_day_norm
+                1.0,    # occupancy_rate
+                1.0,    # avg_travel_time_AB (normalizado!)
+                1e6,    # future_demand_at_B (mantém valor realista)
+                1.0,    # uptime
+                1.0,    # manutenção ok
+                2e9,    # curr_node_id
+                2e9,    # next_node_id
+                1.0     # occ_risk_out
+            ], dtype=np.float32)
+        )
+
+    @functools.lru_cache(maxsize=None)
+    def action_space(self, agent): # Define the action space for each agent
+
+        return spaces.Discrete(self.actions_amount)
+
+    # ------------------------------------------------------------------
+    # Risk feature helpers (route-step-ahead, no time computations)
+    # ------------------------------------------------------------------
+    def _advance_route_idx_bounce(self, idx: int, going_forward: bool, route_length: int):
+        """Advance one position with the same 'bounce at ends' rule used in MOVE."""
+        if route_length <= 1:
+            return idx, going_forward
+
+        if going_forward:
+            if idx + 1 < route_length:
+                return idx + 1, True
+            # bounce back
+            return max(0, idx - 1), False
+        else:
+            if idx - 1 >= 0:
+                return idx - 1, False
+            # bounce forward
+            return min(route_length - 1, idx + 1), True
+
+    def _future_route_indices(self, idx: int, going_forward: bool, route_length: int, horizon: int):
+        """List of future indices (excluding current) for the next 'horizon' route-steps."""
+        out = []
+        i = int(idx)
+        d = bool(going_forward)
+        for _ in range(max(0, int(horizon))):
+            i, d = self._advance_route_idx_bounce(i, d, route_length)
+            out.append(i)
+        return out
+
+    def _get_predicted_occupancy_for_route_seq(self, route_id: str, seq_idx: int):
+        """Fetch occupancy prediction aligned to a route's pt_sequence (0-based)."""
+        if not route_id:
+            return None
+        mp = getattr(self, "occ_pred_by_route_seq", None)
+        if not mp:
+            return None
+        v = mp.get(route_id, {}).get(int(seq_idx))
+        return None if v is None else float(v)
+
+    def _compute_occ_risk_for_agent(self, agent: str, horizon: int = None) -> float:
+        """Probability of leaving the ideal occupancy range in the next N route-steps."""
+        if not getattr(self, "enable_risk_feature", False):
+            return 0.0
+
+        H = int(self.risk_horizon_steps if horizon is None else horizon)
+        if H <= 0:
+            return 0.0
+
+        state = self.agent_states.get(agent)
+        if not state:
+            return 0.0
+
+        route = state.get("route") or []
+        route_length = len(route)
+        if route_length < 2:
+            return 0.0
+
+        idx = int(state.get("route_idx", 0))
+        going_forward = bool(state.get("going_forward", True))
+        route_id = state.get("route_id")
+
+        min_occ, max_occ = self.occupancy_range
+
+        future_idxs = self._future_route_indices(idx, going_forward, route_length, H)
+        out_count = 0
+
+        for j in future_idxs:
+            # seq_idx is aligned with route order (same convention as: seq = pt_sequence - 1)
+            occ_pred = self._get_predicted_occupancy_for_route_seq(route_id, j)
+
+            if occ_pred is None:
+                # fallback: use node-level occupancy estimate (possibly overridden by predictions)
+                try:
+                    node_int = int(route[j])
+                except Exception:
+                    node_int = None
+                if node_int is not None:
+                    occ_pred = float(self.occupancy_rate.get(node_int, 0.0))
+                else:
+                    occ_pred = 0.0
+
+            if occ_pred < min_occ or occ_pred > max_occ:
+                out_count += 1
+
+        return float(out_count) / float(H)
+
+    def generate_random_delay(self, start, target):
+        try:
+            # Finds the shortest path between the start and target
+            shortest_path = nx.shortest_path(self.network, source=start, target=target, weight='weight')
+            path_edges = list(zip(shortest_path, shortest_path[1:])) # Creates a list of edges from the shortest path
+            total_time = 0
+
+            if not path_edges:
+                return  # No edges to delay
+
+            # Calculates total time of the edges in the path
+            for a, b in path_edges:
+                a, b = str(a), str(b)
+                edge_key = (min(a, b), max(a, b)) # Sorts the nodes of the edge to avoid duplication
+                if edge_key in self.reward.waitTimeDict:
+                    edge_time = self.reward.waitTimeDict[edge_key][0]
+                    total_time += edge_time # Sums the waiting time of the edge
+                else:
+                    x = 0 
+                    #print(f"[AVISO] Aresta {edge_key} não está no waitTimeDict!")
+
+            average_time = total_time / len(path_edges)
+            #print(f"Média de tempo das arestas do caminho ótimo: {average_time}")
+
+            # Chooses a random edge in the path to apply the delay
+            delay_u, delay_v = random.choice(path_edges)
+            delay_u, delay_v = str(delay_u), str(delay_v) # Sorts the nodes of the edge to avoid duplication
+            delay_edge_key = (min(delay_u, delay_v), max(delay_u, delay_v)) # Chosen edge for delay
+
+            if delay_edge_key in self.reward.waitTimeDict: # Checks if the chosen edge is in waitTimeDict
+                delay = average_time * 5  # Simulates heavy congestion
+                self.dynamicDelays = {
+                    delay_edge_key: delay # Chosen edge for delay with applied delay time
+                }
+                #print(f"Aresta atrasada: {delay_edge_key}, atraso aplicado: {delay}")
+            else:
+                #print(f"[ERRO] Aresta escolhida para atraso {delay_edge_key} não está no waitTimeDict.")
+                self.dynamicDelays = {}
+
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            self.dynamicDelays = {}
+
+    def get_nearest_service_center(self, current_node):
+        # Finds the nearest service center node, not dynamic yet
+        return self.service_center_node
+    
+    def load_current_day_data(self):
+        """Loads base data (daily or mean), always extracts service_day from daily,
+        and applies quantum override if enabled.
+        """
+
+        service_day = None
+
+        # =====================================================
+        # 1️⃣ TRY TO LOAD DAILY (FOR SERVICE DAY)
+        # =====================================================
+        if self.total_days > 0:
+            file_path = os.path.join(
+                self.daily_data_path,
+                self.daily_files[self.current_day_index]
+            )
+
+            with open(file_path, "rb") as f:
+                day_data = pickle.load(f)
+
+            service_day = day_data.get("date")
+
+            print(
+                f"\n📅 [ENV] Loading daily metadata for {service_day} "
+                f"({self.current_day_index + 1}/{self.total_days})"
+            )
+        else:
+            day_data = {}
+            print("⚠️ No daily files found. service_day unavailable.")
+
+        # =====================================================
+        # 2️⃣ BASE DATA SELECTION
+        # =====================================================
+        if getattr(self, "use_only_mean_data", 0) == 1:
+            print("📘 [ENV] Using MEAN values as base.")
+            self._load_mean_values()
+        else:
+            print("📘 [ENV] Using DAILY values as base (with mean fallback).")
+
+            self.avg_travel_time_AB = day_data.get(
+                "avg_travel_times", self.avg_travel_time_AB
+            )
+            self.future_demand_at_B = day_data.get(
+                "future_demand", self.future_demand_at_B
+            )
+            self.occupancy_rate = day_data.get(
+                "occupancy_rate", self.occupancy_rate
+            )
+            self.uptime_normalized = day_data.get(
+                "uptime_normalized", self.uptime_normalized
+            )
+
+            self._use_fallbacks()
+
+        # =====================================================
+        # 3️⃣ QUANTUM / LSTM OVERRIDE
+        # =====================================================
+        if self.occupancy_source != "real":
+            print(
+                f"⚛️ [ENV] Trying occupancy override | "
+                f"source={self.occupancy_source} | "
+                f"service_day={service_day}"
+            )
+
+            # reset per-day route-sequence predictions (used by risk features)
+            self.occ_pred_by_route_seq = defaultdict(dict)
+
+            self._override_occupancy_with_predictions_node_level(
+                service_day=service_day
+            )
+
+    def _load_mean_values(self):
+        """ Always forces the environment to use only mean values """
+        self.avg_travel_time_AB = self.avg_travel_time_AB_mean
+        self.future_demand_at_B = self.future_demand_at_B_mean
+        self.occupancy_rate = self.occupancy_rate_mean
+        self.uptime_normalized = self.uptime_normalized_mean
+
+        print("⚠️ [ENV] Mean travel times loaded.")
+        print("⚠️ [ENV] Mean future demand loaded.")
+        print("⚠️ [ENV] Mean occupancy rate loaded.")
+        print("⚠️ [ENV] Mean uptime normalized loaded.")
+
+    def _use_fallbacks(self):
+        """Applies average fallback values where data is missing."""
+        if not getattr(self, "avg_travel_time_AB", None):
+            self.avg_travel_time_AB = self.avg_travel_time_AB_mean
+            print("⚠️ Using fallback avg_travel_time_AB_mean")
+        if not getattr(self, "future_demand_at_B", None):
+            self.future_demand_at_B = self.future_demand_at_B_mean
+            print("⚠️ Using fallback future_demand_at_B_mean")
+        if not getattr(self, "occupancy_rate", None):
+            self.occupancy_rate = self.occupancy_rate_mean
+            print("⚠️ Using fallback occupancy_rate_mean")
+        if not getattr(self, "uptime_normalized", None):
+            self.uptime_normalized = self.uptime_normalized_mean
+            print("⚠️ Using fallback uptime_normalized_mean")
+
+    def _override_occupancy_with_predictions_node_level(self, service_day):
+        """
+        Overrides occupancy_rate at NODE LEVEL using quantum or LSTM predictions.
+
+        - Expects quantum predictions in ABSOLUTE passengers
+        - Converts to normalized occupancy ∈ [0,1]
+        - Follows the SAME logic used in generate_daily_data.py
+        - Falls back gracefully when data is missing
+        """
+
+        BUS_CAPACITY = 80  # MUST match generate_daily_data.py
+
+        print(
+            f"⚛️ [ENV] Quantum override attempt START | "
+            f"source={self.occupancy_source} | "
+            f"service_day={service_day}"
+        )
+
+        if service_day is None:
+            print("⚠️ [ENV] No service_day found. Skipping quantum occupancy.")
+            return
+
+        column_map = {
+            "quantum_qru": "y_pred_QRU",
+            "quantum_lstm": "y_pred_LSTM",
+        }
+
+        pred_column = column_map.get(self.occupancy_source)
+        if pred_column is None:
+            print(
+                f"⚠️ [ENV] Unknown occupancy_source={self.occupancy_source}. "
+                f"Skipping quantum override."
+            )
+            return
+
+        node_predictions = defaultdict(list)
+        # route_id -> seq_idx -> [occ_norm predictions]
+        route_seq_predictions = defaultdict(lambda: defaultdict(list))
+
+        # ===============================
+        # Load quantum predictions
+        # ===============================
+        for route_id in self.quantum_routes:
+            route_dir = os.path.join(self.quantum_data_path, route_id)
+
+            if not os.path.isdir(route_dir):
+                print(f"⚠️ [ENV] Quantum route dir not found | route={route_id}")
+                continue
+
+            csv_files = [f for f in os.listdir(route_dir) if f.endswith(".csv")]
+            if not csv_files:
+                print(f"⚠️ [ENV] No quantum CSV found | route={route_id}")
+                continue
+
+            csv_path = os.path.join(route_dir, csv_files[0])
+
+            print(
+                f"⚛️ [ENV] Loading quantum CSV | "
+                f"route={route_id} | file={csv_files[0]}"
+            )
+
+            try:
+                df = pd.read_csv(csv_path)
+            except Exception as e:
+                print(f"⚠️ [ENV] Failed to read {csv_path}: {e}")
+                continue
+
+            day_df = df[df["service_day"] == service_day]
+            if day_df.empty:
+                print(
+                    f"⚠️ [ENV] No quantum rows for "
+                    f"route={route_id} | day={service_day}"
+                )
+                continue
+
+            if route_id not in self.real_routes:
+                print(f"⚠️ [ENV] route_id={route_id} not found in real_routes")
+                continue
+
+            path = self.real_routes[route_id]
+
+            # ===============================
+            # Map pt_sequence → node_id
+            # Normalize occupancy
+            # ===============================
+            for _, row in day_df.iterrows():
+                seq = int(row["pt_sequence"]) - 1
+                if seq < 0 or seq >= len(path):
+                    continue
+
+                value = row[pred_column]
+                if pd.isna(value):
+                    continue
+
+                node_id = int(path[seq])
+
+                raw_passengers = float(value)
+                occupancy_norm = min(raw_passengers / BUS_CAPACITY, 1.0)
+
+                node_predictions[node_id].append(occupancy_norm)
+                route_seq_predictions[route_id][seq].append(occupancy_norm)
+
+                # 🔬 Strong debug (sampled)
+                if len(node_predictions[node_id]) == 1:
+                    print(
+                        f"🧪 [Q-OCC RAW→NORM] "
+                        f"day={service_day} | "
+                        f"route={route_id} | "
+                        f"node={node_id} | "
+                        f"raw={raw_passengers:.2f} | "
+                        f"norm={occupancy_norm:.4f}"
+                    )
+
+        # ===============================
+        # Apply overrides
+        # ===============================
+        if not node_predictions:
+            print(
+                f"⚠️ [ENV] No quantum node-level data for {service_day}. "
+                f"Using classical occupancy."
+            )
+            return
+
+        overridden_nodes = 0
+        for node, values in node_predictions.items():
+            self.occupancy_rate[node] = sum(values) / len(values)
+            overridden_nodes += 1
+
+
+        # Build per-route, per-sequence prediction map (used by risk feature)
+        # We store 0-based seq_idx (seq = pt_sequence - 1) to match route_idx convention.
+        try:
+            self.occ_pred_by_route_seq = {
+                rid: {s: (sum(vals) / len(vals)) for s, vals in seq_map.items() if vals}
+                for rid, seq_map in route_seq_predictions.items()
+            }
+        except Exception as e:
+            print(f"⚠️ [ENV] Failed building occ_pred_by_route_seq: {e}")
+            self.occ_pred_by_route_seq = defaultdict(dict)
+
+        if self.debug_quantum and self.occ_pred_by_route_seq:
+            # show a small sample for sanity
+            sample_rid = next(iter(self.occ_pred_by_route_seq.keys()))
+            sample_items = sorted(self.occ_pred_by_route_seq[sample_rid].items())[:5]
+            print(f"🧪 [Q-PRED MAP] route={sample_rid} sample(seq->occ)={sample_items}")
+        print(
+            f"✅ [ENV] Quantum occupancy applied | "
+            f"source={self.occupancy_source} | "
+            f"nodes_updated={overridden_nodes}"
+        )
+
+
+# This is the base class for reward classes
+class RewardBaseClass():
+    def getReward(self, state, previousState, action, target, graph):
+        raise NotImplementedError
+    def getRewardSoftMin(self, state, previousState, action, target, graph):
+        raise NotImplementedError
+
+# This is the base class for stop classes
+class StopConditionBaseClass():
+    def isTerminated(self, state, previousState, action, target, graph):
+        raise NotImplementedError
+        
+class DefaultReward(RewardBaseClass):
+    """
+    Compound reward and NORMALIZED to [-1, +1] per step.
+    Components:
+      - occ: penalizes out of ideal range (quadratic, 0..1, sign -)
+      - uptime: direct bonus (0..1, sign +)
+      - sync: measures regularity of headways vs target (0..1, sign +)
+      - efficiency: 1 - (estimated/expected) truncated (0..1, sign +)
+    """
+    def __init__(self, waitTimeDict=None, reward_weights=None, occupancy_range=(0.6, 0.9),
+                 target_headway_seconds: float = 600.0,  # 10 minutos
+                 max_sync_rel_std: float = 1.0,          # >1 é truncado
+                 softmin_temperature=0.2):
+        super().__init__()
+        # self.waitTimeDict can be used if needed for other metrics
+        self.waitTimeDict = waitTimeDict or {}
+
+        # Adjustable weights (sum doesn't need to be 1; we do weighted average)
+        self.reward_weights = reward_weights or {
+            "occ_penalty": 0.5,        # less than 1 to not dominate
+            "uptime_bonus": 0.7,
+            "sync_score": 0.5,         
+            "energy_efficiency": 0.6
+        }
+
+        self.occupancy_range = occupancy_range
+        self.target_headway = float(target_headway_seconds)
+        self.max_sync_rel_std = float(max_sync_rel_std)
+        self.softmin_temperature = float(softmin_temperature)
+
+    def _occ_component(self, occupancy: float) -> float:
+        """
+        Returns a value in [0, 1], where 0 = perfect in ideal range; 1 = far off.
+        Then we apply negative sign when composing the reward
+        """
+        min_occ, max_occ = self.occupancy_range
+        if occupancy < min_occ:
+            return min(1.0, (min_occ - occupancy) ** 2 / (min_occ ** 2 + 1e-8))
+        if occupancy > max_occ:
+            return min(1.0, (occupancy - max_occ) ** 2 / ((1.0 - max_occ) ** 2 + 1e-8))
+        return 0.0
+
+    def _sync_component(self, headways: list) -> float:
+        """
+        Measures regularity in [0, 1]: 1 = perfect (intervals very close to target),
+        0 = very irregular (relative deviation >= max_sync_rel_std)
+        """
+        if not headways or len(headways) < 3: # Estou passando todos os agentes e não os agentes na rota especifica
+            return 0.0  # Not enough information to assess regularity
+
+        # intervals in seconds
+        intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)]
+        # remove noise/invalid intervals
+        intervals = [x for x in intervals if x > 0]
+        if len(intervals) < 2:
+            return 0.0
+
+        # RMS deviation versus target
+        diffs = [(x - self.target_headway) for x in intervals]
+        mean_sq = sum(d * d for d in diffs) / len(diffs)
+        rms = mean_sq ** 0.5  # in seconds
+
+        # Normalized relative deviation (0=perfect, 1=bad limit)
+        rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8))
+
+        # Convert to "score" in [0,1], where 1 is good
+        return 1.0 - rel
+
+    def _efficiency_component(self, estimated_time: float, expected_time: float) -> float:
+        """
+        Travel efficiency in [0,1]. 1 = equal/to less than expected; 0 = worse than expected.
+        """
+        if expected_time <= 0:
+            return 0.0
+        ratio = estimated_time / (expected_time + 1e-8)
+        return float(np.clip(1.0 - ratio, 0.0, 1.0))
+    
+    def getReward(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None
+    ):
+        # Normalized components
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        #print("\n--- Componentes de Recompensa (Step) ---")
+        #print(f"  | Ocupação (occ_pen): {occ_pen:.4f}")
+        #print(f"  | Tempo de Atividade (uptime): {uptime:.4f}")
+        #print(f"  | Sincronização (sync): {sync:.4f}")
+        #print(f"  | Eficiência (eff): {eff:.4f}")
+
+        assert 0.0 <= occ_pen <= 1.0, f"occ_pen fora do range: {occ_pen}"
+        assert 0.0 <= uptime <= 1.0, f"uptime fora do range: {uptime}"
+        assert 0.0 <= sync <= 1.0, f"sync fora do range: {sync}"
+        assert 0.0 <= eff <= 1.0, f"eff fora do range: {eff}"
+
+        w = self.reward_weights
+        #print("  | Pesos:", w)
+
+        # Weighted combination (keeping each term in [-1, +1])
+        # occ_pen enters with NEGATIVE sign
+        w = self.reward_weights
+        reward = (
+            -w["occ_penalty"] * occ_pen +
+             w["uptime_bonus"] * uptime + # uptime esta sendo um positivo que esta tendendo a zero, enquanto ele vai
+             w["sync_score"] * sync +
+             w["energy_efficiency"] * eff
+        )
+
+        # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
+        weight_sum = (abs(w["occ_penalty"]) + w["uptime_bonus"] + w["sync_score"] + w["energy_efficiency"])
+        if weight_sum > 0:
+            reward = reward / weight_sum
+
+        assert weight_sum >= 0.0, f"weight_sum negativo: {weight_sum}"
+        
+        # Clip final for numerical stability
+        # reward += 0.2
+        # print(f"\n--- Recompensa Final Normalizada: {final_reward:.4f} ---")
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        if np.random.rand() < 0.005:  # ~0.5% dos steps
+            print(
+                f"[REWARD DBG] "
+                f"occ_pen={occ_pen:.3f} "
+                f"uptime={uptime:.3f} "
+                f"sync={sync:.3f} "
+                f"eff={eff:.3f} | "
+                f"weights={w} | "
+                f"final={reward:.3f}"
+            )
+
+        return reward
+
+
+    def getRewardHard(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None
+    ):
+ 
+       # Hard-min (minimax) scalarization:
+       # - converte componentes para objetivos "maior é melhor"
+       # - calcula reward = min(obj_i) (considerando pesos)
+       # - normaliza/clipa para manter contrato [-1, 1]
+
+
+        # --- 1) extrai componentes (mesma lógica que já tinha) ---
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # --- 2) prepara objetivos "maior é melhor" ---
+        # occ_pen é uma penalidade (0 = ótimo, 1 = muito ruim), então invertemos:
+        obj_occ = -occ_pen        # agora: maior é melhor (menos penalidade => maior)
+        obj_uptime = uptime       # já maior é melhor
+        obj_sync = sync           # já maior é melhor
+        obj_eff = eff             # já maior é melhor
+
+        # --- 3) aplica pesos por objetivo (se peso == 0 => ignorar) ---
+        w = self.reward_weights  # dicionário esperado: occ_penalty, uptime_bonus, sync_score, energy_efficiency
+        w_occ = abs(w.get("occ_penalty", 0.0))
+        w_up  = float(w.get("uptime_bonus", 0.0))
+        w_sync = float(w.get("sync_score", 0.0))
+        w_eff = float(w.get("energy_efficiency", 0.0))
+
+        # Se um peso for zero, colocamos um sentinel alto (1.0) para que ele não seja o min.
+        # Alternativa: simplesmente não incluir o objetivo na lista; optamos por incluir sentinel
+        # para preservar a consistência de normalização.
+        objs = []
+        if w_occ != 0.0:
+            objs.append(w_occ * obj_occ)
+        else:
+            objs.append(1.0)
+
+        if w_up != 0.0:
+            objs.append(w_up * obj_uptime)
+        else:
+            objs.append(1.0)
+
+        if w_sync != 0.0:
+            objs.append(w_sync * obj_sync)
+        else:
+            objs.append(1.0)
+
+        if w_eff != 0.0:
+            objs.append(w_eff * obj_eff)
+        else:
+            objs.append(1.0)
+
+        # --- 4) normalização simples por maior peso ativo (evita escala estranha) ---
+        max_w = max(w_occ, w_up, w_sync, w_eff, 1.0)
+
+        # ### ALTERAÇÃO MINIMAX: HARD-MIN ###
+        reward = min(objs) / max_w
+        # ### FIM DA ALTERAÇÃO MINIMAX ###
+
+        # --- 5) garantia de contrato e estabilidade ---
+        reward = float(np.clip(reward, -1.0, 1.0))
+        
+        return reward
+
+    def getRewardSoftMin(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+            # ============================================================
+            # 1 - EXTRAÇÃO DOS COMPONENTES (OBJETIVOS SEPARADOS)
+            # ============================================================
+            # Aqui nós explicitamente mantemos múltiplos objetivos R_i,
+            # o que caracteriza o problema como Multi-Objective RL (MORL).
+            #
+            # Cada componente é normalizado para [0, 1] antes da agregação.
+
+            occ_pen = 0.0   # penalidade de ocupação (quanto mais longe do ideal, pior)
+            uptime = 0.0    # tempo de atividade do veículo
+            sync = 0.0      # regularidade de headways
+            eff = 0.0       # eficiência temporal
+
+            if agent_state is not None:
+                occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+                uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+            sync = self._sync_component(headways or [])
+            eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+            # ============================================================
+            # 2 - DEFINIÇÃO DOS OBJETIVOS (MAIOR = MELHOR)
+            # ============================================================
+            # Para aplicar Soft Max-Min, todos os objetivos
+            # precisam estar no mesmo sentido semântico:
+            # - valores maiores significam comportamento melhor
+            #
+            # Por isso, penalidades são invertidas.
+
+            obj_occ = -occ_pen     # quanto menor a penalidade, maior o objetivo
+            obj_uptime = uptime
+            obj_sync = sync
+            obj_eff = eff
+
+            # ============================================================
+            # 3) SELEÇÃO DOS OBJETIVOS ATIVOS E APLICAÇÃO DE PESOS
+            # ============================================================
+            # Diferente de uma soma ponderada clássica, aqui os pesos
+            # NÃO definem diretamente a importância final,
+            # mas apenas a escala relativa de cada objetivo.
+            #
+            # Objetivos com peso zero são removidos da escalarização pra não dar BO 
+
+            w = self.reward_weights
+            objs = []
+            labels = []
+
+            if w["occ_penalty"] > 0:
+                objs.append(abs(w["occ_penalty"]) * obj_occ)
+                labels.append("occ")
+
+            if w["uptime_bonus"] > 0:
+                objs.append(w["uptime_bonus"] * obj_uptime)
+                labels.append("uptime")
+
+            if w["sync_score"] > 0:
+                objs.append(w["sync_score"] * obj_sync)
+                labels.append("sync")
+
+            if w["energy_efficiency"] > 0:
+                objs.append(w["energy_efficiency"] * obj_eff)
+                labels.append("eff")
+
+            objs = np.array(objs, dtype=np.float32)
+
+            # ============================================================
+            # 4) SOFT MAX-MIN (SOFTMIN SCALARIZATION)
+            # ============================================================
+            # Este é o núcleo MORL do método.
+            #
+            # A ideia do Soft Max-Min é:
+            #   - dar mais peso aos objetivos com PIOR desempenho
+            #   - sem ignorar completamente os outros objetivos
+            #
+            # Isso é feito aplicando um softmin sobre os objetivos.
+
+            T = self.softmin_temperature  # temperatura controla quão "duro" é o min no exemplo base ta pra 0.2
+            # T → 0  => aproxima minimax (hard min)
+            # T alto => aproxima média ponderada
+
+            # Softmin é implementado como softmax sobre o negativo
+            logits = -objs / (T + 1e-8)
+
+            # Estabilidade numérica (remove o maior logit)
+            weights = np.exp(logits - np.max(logits))
+            weights = weights / (np.sum(weights) + 1e-8)
+
+            # A reward final é uma combinação ponderada,
+            # onde objetivos piores recebem mais peso automaticamente.
+            reward = float(np.sum(weights * objs))
+
+            # ============================================================
+            # 5) NORMALIZAÇÃO FINAL
+            # ============================================================
+            # Garante contrato esperado pelo algoritmo de RL
+            # e evita instabilidade numérica.
+            reward = float(np.clip(reward, -1.0, 1.0))
+
+            # ============================================================
+            # 6) DEBUG (INTERPRETABILIDADE)
+            # ============================================================
+            # Esse log é extremamente útil para validar MORL:
+            # pra conseguir ver explicitamente
+            #   - quais objetivos estão piores
+            #   - como os pesos se redistribuem dinamicamente
+            if np.random.rand() < 0.005:
+                dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+                print(
+                    f"[SOFTMIN DBG] T={T:.2f} | "
+                    f"objs=[{dbg}] | "
+                    f"weights={weights.round(3)} | "
+                    f"reward={reward:.3f}"
+                )
+
+            return reward
+
+    def getRewardMaxMedian(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES (OBJETIVOS MORL)
+        # ============================================================
+        # Cada componente representa um objetivo distinto R_i.
+        # Todos são normalizados previamente para [0, 1]
+
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para aplicar qualquer escalarização MORL,
+        # todos os objetivos precisam ter a mesma semântica.
+        #
+        # Penalidades são invertidas.
+
+        obj_occ = -occ_pen
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+        # ============================================================
+        # 3) SELEÇÃO DOS OBJETIVOS ATIVOS
+        # ============================================================
+        # Diferente da soma ponderada:
+        # - pesos NÃO entram como multiplicadores
+        # - eles funcionam apenas como liga/desliga de objetivos
+        #
+        # Isso preserva a propriedade do Max-Median que é o que estamos aplicando aqui no caso
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(obj_eff)
+            labels.append("eff")
+
+        objs = np.array(objs, dtype=np.float32)
+
+        # ============================================================
+        # 4) MAX-MEDIAN (ESCALARIZAÇÃO POR MEDIANA)
+        # ============================================================
+        # Aqui está o núcleo da técnica:
+        #
+        # - Ordenamos implicitamente os objetivos
+        # - Selecionamos o valor mediano
+        #
+        # Esse valor representa o "desempenho típico"
+        # da política naquele step.
+
+        reward = float(np.median(objs))
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante compatibilidade com o algoritmo de RL
+        # e estabilidade numérica.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        # ============================================================
+        # 6) DEBUG (INTERPRETABILIDADE MORL)
+        # ============================================================
+        # Útil para verificar:
+        # - quais objetivos estão extremos tanto pra cima quanto pra baixo
+        # - qual deles está definindo a mediana, tambvém pra ver se tem algum bug rolando
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[MAX-MEDIAN DBG] "
+                f"objs=[{dbg}] | "
+                f"median={reward:.3f}"
+            )
+
+        return reward
+
+    def getRewardLowerQuantile(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None,
+        alpha=1/3
+    ):
+        # ============================================================
+        # CONTEXTO GERAL ESSE AQUI ME CONFUNDIU UM POUCO
+        # ============================================================
+        # Este método implementa a escalarização Multi Objetivo conhecida
+        # como Lower Quantile Optimization.
+        #
+        # A ideia central NÃO é:
+        #   - otimizar a média dos objetivos
+        #   - nem otimizar apenas o pior caso
+        #
+        # Mas sim:
+        #   - otimizar a "faixa inferior" dos objetivos
+        #
+        # Em outras palavras:
+        #   "garanta que os objetivos ruins não estejam ruins demais",
+        # sem se tornar excessivamente conservador.
+        #
+        # Matematicamente igual no artigo:
+        #   f(R1,...,Rn) = Q_α({Ri})
+        #
+        # onde α define qual fração inferior dos objetivos importa.
+        # Neste experimento, α = 1/3.
+        # ============================================================
+
+
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES DE RECOMPENSA
+        # ============================================================
+        # Aqui extraímos os mesmos componentes já usados nas outras
+        # funções de reward.
+        #
+        # IMPORTANTE:
+        #   Cada componente é normalizado para [0, 1].
+        #   Neste ponto ainda NÃO fazemos nenhuma agregação.
+
+        occ_pen = 0.0   # Penalidade de ocupação (0 = ideal, 1 = muito ruim)
+        uptime = 0.0    # Fração de tempo ativo (0 = ruim, 1 = perfeito)
+        sync = 0.0      # Regularidade de headways (0 = ruim, 1 = perfeito)
+        eff = 0.0       # Eficiência temporal (0 = ruim, 1 = perfeito)
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para MORL, todos os objetivos precisam ter o mesmo sentido
+        # semântico: valores maiores indicam comportamento melhor.
+        #
+        # - uptime, sync e eff já seguem essa lógica
+        # - occ_pen é uma penalidade, então invertimos o sinal
+
+        obj_occ = -occ_pen      # menor penalidade → valor maior
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+
+        # ============================================================
+        # 3) APLICAÇÃO DE PESOS (ESCALA RELATIVA)
+        # ============================================================
+        # Diferente de uma soma ponderada tradicional:
+        #   → aqui os pesos NÃO definem contribuição final direta
+        #   → eles apenas ajustam a escala relativa entre objetivos
+        #
+        # Objetivos com peso zero são ignorados completamente,
+        # evitando que entrem na ordenação e afetem o quantil, aquele α la
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(abs(w["occ_penalty"]) * obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(w["uptime_bonus"] * obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(w["sync_score"] * obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(w["energy_efficiency"] * obj_eff)
+            labels.append("eff")
+
+        # Converte para numpy para facilitar ordenação
+        objs = np.array(objs, dtype=np.float32)
+
+
+        # ============================================================
+        # 4) LOWER QUANTILE OPTIMIZATION (NÚCLEO DO MÉTODO)
+        # ============================================================
+        # Passo-chave da técnica:
+        #
+        # 1) Ordenamos os objetivos do pior para o melhor
+        # 2) Selecionamos o quantil inferior Q_α
+        #
+        # Exemplo com 4 objetivos:
+        #   sorted = [-1.0, 0.0, 0.9, 1.0]
+        #
+        # α = 1/3 → índice ≈ 1
+        # reward = 0.0
+        #
+        # Ou seja:
+        #   - ignoramos o pior extremo
+        #   - focamos na fronteira inferior aceitável
+
+        sorted_objs = np.sort(objs)  # crescente: pior → melhor
+
+        n = len(sorted_objs)
+        assert n > 0, "Nenhum objetivo ativo para escalarização"
+
+        # Índice do quantil inferior
+        # (n - 1) garante que o índice fique no range válido
+        q_idx = int(np.floor(alpha * (n - 1)))
+
+        reward = float(sorted_objs[q_idx])
+
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante que o reward respeite o contrato esperado
+        # pelo algoritmo de RL (ex: PPO, DQN, A2C, etc.)
+        #
+        # Também evita explosões numéricas.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+
+        # ============================================================
+        # 6) DEBUG E INTERPRETABILIDADE
+        # ============================================================
+        # Este log é pra ajudar no debug é útil para:
+        #   - validar o comportamento da escalarização
+        #   - entender quais objetivos estão segurando a política
+        #
+        # Ele mostra:
+        #   - valores individuais
+        #   - ordenação
+        #   - valor do quantil escolhido
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[LOWER-Q DBG] α={alpha:.2f} | "
+                f"objs=[{dbg}] | "
+                f"sorted={sorted_objs.round(3)} | "
+                f"Qα={reward:.3f}"
+            )
+
+        return reward
+
+
+
+
+# This is the default stop class, which terminates the episode when the agent reaches the target node or takes the SERVICE_CENTER action
+class DefaultStopClass(StopConditionBaseClass):
+    def isTerminated(self, state, previousState, action, target, graph):
+        return state == target or action == 2

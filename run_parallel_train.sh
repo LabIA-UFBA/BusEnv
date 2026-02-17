@@ -42,7 +42,7 @@ algos=("mappo")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade) 
-runs_per_algo=25
+runs_per_algo=1
 
 # Pastas de saída
 LOG_DIR="${ROOT_DIR}/logs"

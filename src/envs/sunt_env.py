@@ -28,7 +28,7 @@ class parallel_env(ParallelEnv):
                 use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
-                real_routes=None, route_metadata=None):  
+                real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal"):  
 
         # --- Basic configuration ---
         self.network = network
@@ -111,6 +111,14 @@ class parallel_env(ParallelEnv):
         }
         self.occupancy_range = (0.6, 0.9)
 
+        # --- Risk feature (forecast-based) ---
+        # Computes the probability of leaving the ideal occupancy range in the next N route-steps
+        # (no time-of-day computation; purely step-ahead along the route)
+        self.enable_risk_feature = bool(enable_risk_feature)
+        self.risk_horizon_steps = int(risk_horizon_steps)
+        # route_id -> {seq_idx(0-based along route): predicted occupancy_norm in [0,1]}
+        self.occ_pred_by_route_seq = defaultdict(dict)
+
         # --- Observation and action spaces ---
         self.observation_spaces = {
             agent: self.observation_space(agent) for agent in self.possible_agents
@@ -137,7 +145,7 @@ class parallel_env(ParallelEnv):
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
 
-        self.occupancy_source = "real" # "real" | "quantum_qru" | "quantum_lstm"
+        self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm"
 
         self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
 
@@ -203,7 +211,7 @@ class parallel_env(ParallelEnv):
 
         self.last_rain_eff = {agent: 0.0 for agent in self.agents}
 
-        self.reward_type = "normal" # normal || raining
+        self.reward_type = reward_raining_type # normal || raining
 
         self.date = None
 
@@ -220,7 +228,7 @@ class parallel_env(ParallelEnv):
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
 
-        self.debug_quantum = False   # DEBUG MODE ON
+        self.debug_quantum = True   # DEBUG MODE ON
 
 
 
@@ -412,6 +420,8 @@ class parallel_env(ParallelEnv):
             travel_time = self.avg_travel_time_AB.get((initial, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
             # --- Climate / Rain: initial observation ---
             if self.use_rain and self.climate_data is not None:
                 time_sec = self.agent_times[agent]
@@ -441,6 +451,7 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(initial)],
                 self.node_to_idx[str(next_node)],
                 1.0 if is_raining else 0.0,
+                occ_risk,
             ], dtype=np.float32)
 
             clipped_obs = np.clip(
@@ -849,6 +860,8 @@ class parallel_env(ParallelEnv):
             tt_next = min(tt_next_raw, TRAVEL_TIME_CAP)
             normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
 
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
             # === Observation update ===
             if state.get("status") != "active":
                 print(
@@ -866,6 +879,7 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(curr_node)],
                 self.node_to_idx[str(next_node)],
                 1.0 if is_raining else 0.0,
+                occ_risk,
             ], dtype=np.float32)
 
             observations[agent] = np.clip(
@@ -952,7 +966,8 @@ class parallel_env(ParallelEnv):
                 0.0,    # maintenance_status
                 0.0,    # curr_node_id
                 0.0,    # next_node_id
-                0.0     # is_raining (0 ou 1)
+                0.0,    # is_raining (0 ou 1)
+                0.0     # occ_risk_out
             ], dtype=np.float32),
             high=np.array([
                 1.0,    # time_of_day_norm
@@ -963,13 +978,100 @@ class parallel_env(ParallelEnv):
                 1.0,    # manutenção ok
                 2e9,    # curr_node_id
                 2e9,    # next_node_id
-                1.0     # is_raining (0 ou 1)
+                1.0,    # is_raining (0 ou 1)
+                1.0     # occ_risk_out
             ], dtype=np.float32)
         )
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent): # Define the action space for each agent
         return spaces.Discrete(self.actions_amount)
+    
+    # ------------------------------------------------------------------
+    # Risk feature helpers (route-step-ahead, no time computations)
+    # ------------------------------------------------------------------
+    def _advance_route_idx_bounce(self, idx: int, going_forward: bool, route_length: int):
+        """Advance one position with the same 'bounce at ends' rule used in MOVE."""
+        if route_length <= 1:
+            return idx, going_forward
+
+        if going_forward:
+            if idx + 1 < route_length:
+                return idx + 1, True
+            # bounce back
+            return max(0, idx - 1), False
+        else:
+            if idx - 1 >= 0:
+                return idx - 1, False
+            # bounce forward
+            return min(route_length - 1, idx + 1), True
+
+    def _future_route_indices(self, idx: int, going_forward: bool, route_length: int, horizon: int):
+        """List of future indices (excluding current) for the next 'horizon' route-steps."""
+        out = []
+        i = int(idx)
+        d = bool(going_forward)
+        for _ in range(max(0, int(horizon))):
+            i, d = self._advance_route_idx_bounce(i, d, route_length)
+            out.append(i)
+        return out
+
+    def _get_predicted_occupancy_for_route_seq(self, route_id: str, seq_idx: int):
+        """Fetch occupancy prediction aligned to a route's pt_sequence (0-based)."""
+        if not route_id:
+            return None
+        mp = getattr(self, "occ_pred_by_route_seq", None)
+        if not mp:
+            return None
+        v = mp.get(route_id, {}).get(int(seq_idx))
+        return None if v is None else float(v)
+
+    def _compute_occ_risk_for_agent(self, agent: str, horizon: int = None) -> float:
+        """Probability of leaving the ideal occupancy range in the next N route-steps."""
+        if not getattr(self, "enable_risk_feature", False):
+            return 0.0
+
+        H = int(self.risk_horizon_steps if horizon is None else horizon)
+        if H <= 0:
+            return 0.0
+
+        state = self.agent_states.get(agent)
+        if not state:
+            return 0.0
+
+        route = state.get("route") or []
+        route_length = len(route)
+        if route_length < 2:
+            return 0.0
+
+        idx = int(state.get("route_idx", 0))
+        going_forward = bool(state.get("going_forward", True))
+        route_id = state.get("route_id")
+
+        min_occ, max_occ = self.occupancy_range
+
+        future_idxs = self._future_route_indices(idx, going_forward, route_length, H)
+        out_count = 0
+
+        for j in future_idxs:
+            # seq_idx is aligned with route order (same convention as: seq = pt_sequence - 1)
+            occ_pred = self._get_predicted_occupancy_for_route_seq(route_id, j)
+
+            if occ_pred is None:
+                # fallback: use node-level occupancy estimate (possibly overridden by predictions)
+                try:
+                    node_int = int(route[j])
+                except Exception:
+                    node_int = None
+                if node_int is not None:
+                    occ_pred = float(self.occupancy_rate.get(node_int, 0.0))
+                else:
+                    occ_pred = 0.0
+
+            if occ_pred < min_occ or occ_pred > max_occ:
+                out_count += 1
+
+        return float(out_count) / float(H)
     
     def generate_random_delay(self, start, target):
         try:
@@ -1079,6 +1181,9 @@ class parallel_env(ParallelEnv):
                 f"source={self.occupancy_source} | "
                 f"service_day={service_day}"
             )
+
+            # reset per-day route-sequence predictions (used by risk features)
+            self.occ_pred_by_route_seq = defaultdict(dict)
 
             self._override_occupancy_with_predictions_node_level(
                 service_day=service_day
@@ -1236,6 +1341,22 @@ class parallel_env(ParallelEnv):
             self.occupancy_rate[node] = sum(values) / len(values)
             overridden_nodes += 1
 
+        # Build per-route, per-sequence prediction map (used by risk feature)
+        # We store 0-based seq_idx (seq = pt_sequence - 1) to match route_idx convention.
+        try:
+            self.occ_pred_by_route_seq = {
+                rid: {s: (sum(vals) / len(vals)) for s, vals in seq_map.items() if vals}
+                for rid, seq_map in route_seq_predictions.items()
+            }
+        except Exception as e:
+            print(f"⚠️ [ENV] Failed building occ_pred_by_route_seq: {e}")
+            self.occ_pred_by_route_seq = defaultdict(dict)
+
+        if self.debug_quantum and self.occ_pred_by_route_seq:
+            # show a small sample for sanity
+            sample_rid = next(iter(self.occ_pred_by_route_seq.keys()))
+            sample_items = sorted(self.occ_pred_by_route_seq[sample_rid].items())[:5]
+            print(f"🧪 [Q-PRED MAP] route={sample_rid} sample(seq->occ)={sample_items}")
         print(
             f"✅ [ENV] Quantum occupancy applied | "
             f"source={self.occupancy_source} | "

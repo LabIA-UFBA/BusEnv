@@ -102,6 +102,8 @@ class RLlibSuntBus(MultiAgentEnv):
             uptime_normalized=uptime_normalized,
             real_routes=real_routes,
             route_metadata=route_metadata,
+            occupancy_source ="quantum_qru", # "real" | "quantum_qru" | "quantum_lstm"
+            reward_raining_type = "normal" # normal || raining
         )
 
         # Supersuit wrappers
@@ -308,10 +310,10 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 400000},  # adjust as needed
+        "stop": {"timesteps_total": 4000},  # adjust as needed
         "checkpoint_freq": 200,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 32,     # adjust as needed
+        "num_workers": 0,     # adjust as needed
         "share_policy": "individual",
     }
 
