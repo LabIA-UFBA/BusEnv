@@ -9,6 +9,8 @@ import gym.utils.seeding  # import seeding
 from gym.spaces import Discrete
 import csv
 import os
+import pandas as pd
+from collections import defaultdict
 
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
@@ -131,8 +133,21 @@ class parallel_env(ParallelEnv):
             if f.startswith("daily_data_") and f.endswith(".pkl")
         ])
         self.current_day_index = 0
+        self.current_service_day = 0
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
+
+        self.occupancy_source = "quantum_lstm" # "real" | "quantum_qru" | "quantum_lstm"
+
+        self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
+
+        self.quantum_routes = [
+            "20001_310_1",
+            "20001_310_2",
+            "20002_1320_1",
+            "20002_1320_10",
+            "20002_1367_5",
+        ]
 
         # --- Simulation control flags ---
         self._advance_day = False
@@ -179,6 +194,9 @@ class parallel_env(ParallelEnv):
         self.future_demand_at_B_mean = future_demand_at_B or {} 
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
+
+        self.debug_quantum = True   # DEBUG MODE ON
+
 
 
     @property
@@ -257,7 +275,7 @@ class parallel_env(ParallelEnv):
                 if path_len < 15:
                     return 1
                 if path_len <= 30:
-                    return 2 # Antes era 2 
+                    return 1 # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
                 return max(1, int(default_agents))
 
@@ -522,6 +540,20 @@ class parallel_env(ParallelEnv):
                     alpha = 0.5
                     occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
                     occupancy = max(0.0, min(occupancy, 1.0))
+
+                    # <<< DEBUG >>> QUANTUM OCCUPANCY USAGE
+                    if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                        print(
+                            f"🧪 [Q-OCC USED] day={self.current_day_index} | "
+                            f"step={self.episode_step_counter} | "
+                            f"agent={agent} | "
+                            f"node={curr_node} | "  
+                            f"prev={prev_occ:.4f} | "
+                            f"quantum_raw={expected_occ:.4f} | "
+                            f"used_clipped={occupancy:.4f} | "
+                            f"source={self.occupancy_source}"
+                        )
+
                 else:
                     occupancy = prev_occ
 
@@ -533,6 +565,7 @@ class parallel_env(ParallelEnv):
 
                 self.states[agent] = next_node
 
+                """
                 print(
                     f"[MOVE][{agent}] "
                     f"{curr_node} → {next_node} | "
@@ -542,7 +575,7 @@ class parallel_env(ParallelEnv):
                     f"uptime={state['uptime']:.3f}"
                 )
 
-                """
+              
                 # --- DEBUG AQUI ---
                 total_sec = int(self.agent_times[agent])
                 hours = total_sec // 3600
@@ -580,6 +613,7 @@ class parallel_env(ParallelEnv):
                     headways=self.headways[next_node]
                 )
 
+                """
                 print(
                     f"[REWARD][{agent}] "
                     f"node={next_node} | "
@@ -588,7 +622,7 @@ class parallel_env(ParallelEnv):
                     f"headway_n={len(self.headways[next_node])} | "
                     f"reward={reward:.3f}"
                 )
-
+                """
 
                 self.estimated_times[agent] = 0.0
 
@@ -880,33 +914,71 @@ class parallel_env(ParallelEnv):
         return self.service_center_node
     
     def load_current_day_data(self):
-        """Loads the data for the current day and falls back to averages if necessary."""
+        """Loads base data (daily or mean), always extracts service_day from daily,
+        and applies quantum override if enabled.
+        """
 
+        service_day = None
+
+        # =====================================================
+        # 1️⃣ TRY TO LOAD DAILY (FOR SERVICE DAY)
+        # =====================================================
+        if self.total_days > 0:
+            file_path = os.path.join(
+                self.daily_data_path,
+                self.daily_files[self.current_day_index]
+            )
+
+            with open(file_path, "rb") as f:
+                day_data = pickle.load(f)
+
+            service_day = day_data.get("date")
+
+            print(
+                f"\n📅 [ENV] Loading daily metadata for {service_day} "
+                f"({self.current_day_index + 1}/{self.total_days})"
+            )
+        else:
+            day_data = {}
+            print("⚠️ No daily files found. service_day unavailable.")
+
+        # =====================================================
+        # 2️⃣ BASE DATA SELECTION
+        # =====================================================
         if getattr(self, "use_only_mean_data", 0) == 1:
-            print("📘 [ENV] Using ONLY MEAN DATA (daily files ignored).")
+            print("📘 [ENV] Using MEAN values as base.")
             self._load_mean_values()
-            return
+        else:
+            print("📘 [ENV] Using DAILY values as base (with mean fallback).")
 
-        if self.total_days == 0:
-            print("⚠️ No daily data files found. Using default averages.")
+            self.avg_travel_time_AB = day_data.get(
+                "avg_travel_times", self.avg_travel_time_AB
+            )
+            self.future_demand_at_B = day_data.get(
+                "future_demand", self.future_demand_at_B
+            )
+            self.occupancy_rate = day_data.get(
+                "occupancy_rate", self.occupancy_rate
+            )
+            self.uptime_normalized = day_data.get(
+                "uptime_normalized", self.uptime_normalized
+            )
+
             self._use_fallbacks()
-            return
 
-        file_path = os.path.join(self.daily_data_path, self.daily_files[self.current_day_index])
-        with open(file_path, "rb") as f:
-            day_data = pickle.load(f)
+        # =====================================================
+        # 3️⃣ QUANTUM / LSTM OVERRIDE
+        # =====================================================
+        if self.occupancy_source != "real":
+            print(
+                f"⚛️ [ENV] Trying occupancy override | "
+                f"source={self.occupancy_source} | "
+                f"service_day={service_day}"
+            )
 
-        print(f"\n📅 [ENV] Loading daily data for {day_data.get('date', 'unknown')} "
-            f"({self.current_day_index + 1}/{self.total_days})")
-
-        # Load with fallback preservation
-        self.avg_travel_time_AB = day_data.get("avg_travel_times", self.avg_travel_time_AB)
-        self.future_demand_at_B = day_data.get("future_demand", self.future_demand_at_B)
-        self.occupancy_rate = day_data.get("occupancy_rate", self.occupancy_rate)
-        self.uptime_normalized = day_data.get("uptime_normalized", self.uptime_normalized)
-
-        # Apply explicit fallbacks when missing
-        self._use_fallbacks()
+            self._override_occupancy_with_predictions_node_level(
+                service_day=service_day
+            )
 
     def _load_mean_values(self):
         """ Always forces the environment to use only mean values """
@@ -935,10 +1007,143 @@ class parallel_env(ParallelEnv):
             self.uptime_normalized = self.uptime_normalized_mean
             print("⚠️ Using fallback uptime_normalized_mean")
 
+    def _override_occupancy_with_predictions_node_level(self, service_day):
+        """
+        Overrides occupancy_rate at NODE LEVEL using quantum or LSTM predictions.
+
+        - Expects quantum predictions in ABSOLUTE passengers
+        - Converts to normalized occupancy ∈ [0,1]
+        - Follows the SAME logic used in generate_daily_data.py
+        - Falls back gracefully when data is missing
+        """
+
+        BUS_CAPACITY = 80  # MUST match generate_daily_data.py
+
+        print(
+            f"⚛️ [ENV] Quantum override attempt START | "
+            f"source={self.occupancy_source} | "
+            f"service_day={service_day}"
+        )
+
+        if service_day is None:
+            print("⚠️ [ENV] No service_day found. Skipping quantum occupancy.")
+            return
+
+        column_map = {
+            "quantum_qru": "y_pred_QRU",
+            "quantum_lstm": "y_pred_LSTM",
+        }
+
+        pred_column = column_map.get(self.occupancy_source)
+        if pred_column is None:
+            print(
+                f"⚠️ [ENV] Unknown occupancy_source={self.occupancy_source}. "
+                f"Skipping quantum override."
+            )
+            return
+
+        node_predictions = defaultdict(list)
+
+        # ===============================
+        # Load quantum predictions
+        # ===============================
+        for route_id in self.quantum_routes:
+            route_dir = os.path.join(self.quantum_data_path, route_id)
+
+            if not os.path.isdir(route_dir):
+                print(f"⚠️ [ENV] Quantum route dir not found | route={route_id}")
+                continue
+
+            csv_files = [f for f in os.listdir(route_dir) if f.endswith(".csv")]
+            if not csv_files:
+                print(f"⚠️ [ENV] No quantum CSV found | route={route_id}")
+                continue
+
+            csv_path = os.path.join(route_dir, csv_files[0])
+
+            print(
+                f"⚛️ [ENV] Loading quantum CSV | "
+                f"route={route_id} | file={csv_files[0]}"
+            )
+
+            try:
+                df = pd.read_csv(csv_path)
+            except Exception as e:
+                print(f"⚠️ [ENV] Failed to read {csv_path}: {e}")
+                continue
+
+            day_df = df[df["service_day"] == service_day]
+            if day_df.empty:
+                print(
+                    f"⚠️ [ENV] No quantum rows for "
+                    f"route={route_id} | day={service_day}"
+                )
+                continue
+
+            if route_id not in self.real_routes:
+                print(f"⚠️ [ENV] route_id={route_id} not found in real_routes")
+                continue
+
+            path = self.real_routes[route_id]
+
+            # ===============================
+            # Map pt_sequence → node_id
+            # Normalize occupancy
+            # ===============================
+            for _, row in day_df.iterrows():
+                seq = int(row["pt_sequence"]) - 1
+                if seq < 0 or seq >= len(path):
+                    continue
+
+                value = row[pred_column]
+                if pd.isna(value):
+                    continue
+
+                node_id = int(path[seq])
+
+                raw_passengers = float(value)
+                occupancy_norm = min(raw_passengers / BUS_CAPACITY, 1.0)
+
+                node_predictions[node_id].append(occupancy_norm)
+
+                # 🔬 Strong debug (sampled)
+                if len(node_predictions[node_id]) == 1:
+                    print(
+                        f"🧪 [Q-OCC RAW→NORM] "
+                        f"day={service_day} | "
+                        f"route={route_id} | "
+                        f"node={node_id} | "
+                        f"raw={raw_passengers:.2f} | "
+                        f"norm={occupancy_norm:.4f}"
+                    )
+
+        # ===============================
+        # Apply overrides
+        # ===============================
+        if not node_predictions:
+            print(
+                f"⚠️ [ENV] No quantum node-level data for {service_day}. "
+                f"Using classical occupancy."
+            )
+            return
+
+        overridden_nodes = 0
+        for node, values in node_predictions.items():
+            self.occupancy_rate[node] = sum(values) / len(values)
+            overridden_nodes += 1
+
+        print(
+            f"✅ [ENV] Quantum occupancy applied | "
+            f"source={self.occupancy_source} | "
+            f"nodes_updated={overridden_nodes}"
+        )
+
 
 # This is the base class for reward classes
 class RewardBaseClass():
     def getReward(self, state, previousState, action, target, graph):
+        raise NotImplementedError
+    def getRewardSoftMin(self, state, previousState, action, target, graph):
         raise NotImplementedError
 
 # This is the base class for stop classes
@@ -957,23 +1162,24 @@ class DefaultReward(RewardBaseClass):
     """
     def __init__(self, waitTimeDict=None, reward_weights=None, occupancy_range=(0.6, 0.9),
                  target_headway_seconds: float = 600.0,  # 10 minutos
-                 max_sync_rel_std: float = 1.0          # >1 é truncado
-                 ):
+                 max_sync_rel_std: float = 1.0,          # >1 é truncado
+                 softmin_temperature=0.2):
         super().__init__()
         # self.waitTimeDict can be used if needed for other metrics
         self.waitTimeDict = waitTimeDict or {}
 
         # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.7,        # less than 1 to not dominate
-            "uptime_bonus": 0.4,
-            "sync_score": 0.7,         
+            "occ_penalty": 0.5,        # less than 1 to not dominate
+            "uptime_bonus": 0.7,
+            "sync_score": 0.5,         
             "energy_efficiency": 0.6
         }
 
         self.occupancy_range = occupancy_range
         self.target_headway = float(target_headway_seconds)
         self.max_sync_rel_std = float(max_sync_rel_std)
+        self.softmin_temperature = float(softmin_temperature)
 
     def _occ_component(self, occupancy: float) -> float:
         """
@@ -1091,7 +1297,6 @@ class DefaultReward(RewardBaseClass):
         return reward
 
 
-    """
     def getRewardHard(
         self,
         new_state, previous_state, action, target, network,
@@ -1099,10 +1304,10 @@ class DefaultReward(RewardBaseClass):
         agent_state=None, headways=None
     ):
  
-        Hard-min (minimax) scalarization:
-        - converte componentes para objetivos "maior é melhor"
-        - calcula reward = min(obj_i) (considerando pesos)
-        - normaliza/clipa para manter contrato [-1, 1]
+       # Hard-min (minimax) scalarization:
+       # - converte componentes para objetivos "maior é melhor"
+       # - calcula reward = min(obj_i) (considerando pesos)
+       # - normaliza/clipa para manter contrato [-1, 1]
 
 
         # --- 1) extrai componentes (mesma lógica que já tinha) ---
@@ -1165,8 +1370,406 @@ class DefaultReward(RewardBaseClass):
 
         # --- 5) garantia de contrato e estabilidade ---
         reward = float(np.clip(reward, -1.0, 1.0))
+        
         return reward
-    """
+
+    def getRewardSoftMin(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+            # ============================================================
+            # 1 - EXTRAÇÃO DOS COMPONENTES (OBJETIVOS SEPARADOS)
+            # ============================================================
+            # Aqui nós explicitamente mantemos múltiplos objetivos R_i,
+            # o que caracteriza o problema como Multi-Objective RL (MORL).
+            #
+            # Cada componente é normalizado para [0, 1] antes da agregação.
+
+            occ_pen = 0.0   # penalidade de ocupação (quanto mais longe do ideal, pior)
+            uptime = 0.0    # tempo de atividade do veículo
+            sync = 0.0      # regularidade de headways
+            eff = 0.0       # eficiência temporal
+
+            if agent_state is not None:
+                occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+                uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+            sync = self._sync_component(headways or [])
+            eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+            # ============================================================
+            # 2 - DEFINIÇÃO DOS OBJETIVOS (MAIOR = MELHOR)
+            # ============================================================
+            # Para aplicar Soft Max-Min, todos os objetivos
+            # precisam estar no mesmo sentido semântico:
+            # - valores maiores significam comportamento melhor
+            #
+            # Por isso, penalidades são invertidas.
+
+            obj_occ = -occ_pen     # quanto menor a penalidade, maior o objetivo
+            obj_uptime = uptime
+            obj_sync = sync
+            obj_eff = eff
+
+            # ============================================================
+            # 3) SELEÇÃO DOS OBJETIVOS ATIVOS E APLICAÇÃO DE PESOS
+            # ============================================================
+            # Diferente de uma soma ponderada clássica, aqui os pesos
+            # NÃO definem diretamente a importância final,
+            # mas apenas a escala relativa de cada objetivo.
+            #
+            # Objetivos com peso zero são removidos da escalarização pra não dar BO 
+
+            w = self.reward_weights
+            objs = []
+            labels = []
+
+            if w["occ_penalty"] > 0:
+                objs.append(abs(w["occ_penalty"]) * obj_occ)
+                labels.append("occ")
+
+            if w["uptime_bonus"] > 0:
+                objs.append(w["uptime_bonus"] * obj_uptime)
+                labels.append("uptime")
+
+            if w["sync_score"] > 0:
+                objs.append(w["sync_score"] * obj_sync)
+                labels.append("sync")
+
+            if w["energy_efficiency"] > 0:
+                objs.append(w["energy_efficiency"] * obj_eff)
+                labels.append("eff")
+
+            objs = np.array(objs, dtype=np.float32)
+
+            # ============================================================
+            # 4) SOFT MAX-MIN (SOFTMIN SCALARIZATION)
+            # ============================================================
+            # Este é o núcleo MORL do método.
+            #
+            # A ideia do Soft Max-Min é:
+            #   - dar mais peso aos objetivos com PIOR desempenho
+            #   - sem ignorar completamente os outros objetivos
+            #
+            # Isso é feito aplicando um softmin sobre os objetivos.
+
+            T = self.softmin_temperature  # temperatura controla quão "duro" é o min no exemplo base ta pra 0.2
+            # T → 0  => aproxima minimax (hard min)
+            # T alto => aproxima média ponderada
+
+            # Softmin é implementado como softmax sobre o negativo
+            logits = -objs / (T + 1e-8)
+
+            # Estabilidade numérica (remove o maior logit)
+            weights = np.exp(logits - np.max(logits))
+            weights = weights / (np.sum(weights) + 1e-8)
+
+            # A reward final é uma combinação ponderada,
+            # onde objetivos piores recebem mais peso automaticamente.
+            reward = float(np.sum(weights * objs))
+
+            # ============================================================
+            # 5) NORMALIZAÇÃO FINAL
+            # ============================================================
+            # Garante contrato esperado pelo algoritmo de RL
+            # e evita instabilidade numérica.
+            reward = float(np.clip(reward, -1.0, 1.0))
+
+            # ============================================================
+            # 6) DEBUG (INTERPRETABILIDADE)
+            # ============================================================
+            # Esse log é extremamente útil para validar MORL:
+            # pra conseguir ver explicitamente
+            #   - quais objetivos estão piores
+            #   - como os pesos se redistribuem dinamicamente
+            if np.random.rand() < 0.005:
+                dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+                print(
+                    f"[SOFTMIN DBG] T={T:.2f} | "
+                    f"objs=[{dbg}] | "
+                    f"weights={weights.round(3)} | "
+                    f"reward={reward:.3f}"
+                )
+
+            return reward
+
+    def getRewardMaxMedian(
+            self,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state=None, headways=None
+        ):
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES (OBJETIVOS MORL)
+        # ============================================================
+        # Cada componente representa um objetivo distinto R_i.
+        # Todos são normalizados previamente para [0, 1]
+
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para aplicar qualquer escalarização MORL,
+        # todos os objetivos precisam ter a mesma semântica.
+        #
+        # Penalidades são invertidas.
+
+        obj_occ = -occ_pen
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+        # ============================================================
+        # 3) SELEÇÃO DOS OBJETIVOS ATIVOS
+        # ============================================================
+        # Diferente da soma ponderada:
+        # - pesos NÃO entram como multiplicadores
+        # - eles funcionam apenas como liga/desliga de objetivos
+        #
+        # Isso preserva a propriedade do Max-Median que é o que estamos aplicando aqui no caso
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(obj_eff)
+            labels.append("eff")
+
+        objs = np.array(objs, dtype=np.float32)
+
+        # ============================================================
+        # 4) MAX-MEDIAN (ESCALARIZAÇÃO POR MEDIANA)
+        # ============================================================
+        # Aqui está o núcleo da técnica:
+        #
+        # - Ordenamos implicitamente os objetivos
+        # - Selecionamos o valor mediano
+        #
+        # Esse valor representa o "desempenho típico"
+        # da política naquele step.
+
+        reward = float(np.median(objs))
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante compatibilidade com o algoritmo de RL
+        # e estabilidade numérica.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        # ============================================================
+        # 6) DEBUG (INTERPRETABILIDADE MORL)
+        # ============================================================
+        # Útil para verificar:
+        # - quais objetivos estão extremos tanto pra cima quanto pra baixo
+        # - qual deles está definindo a mediana, tambvém pra ver se tem algum bug rolando
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[MAX-MEDIAN DBG] "
+                f"objs=[{dbg}] | "
+                f"median={reward:.3f}"
+            )
+
+        return reward
+
+    def getRewardLowerQuantile(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None,
+        alpha=1/3
+    ):
+        # ============================================================
+        # CONTEXTO GERAL ESSE AQUI ME CONFUNDIU UM POUCO
+        # ============================================================
+        # Este método implementa a escalarização Multi Objetivo conhecida
+        # como Lower Quantile Optimization.
+        #
+        # A ideia central NÃO é:
+        #   - otimizar a média dos objetivos
+        #   - nem otimizar apenas o pior caso
+        #
+        # Mas sim:
+        #   - otimizar a "faixa inferior" dos objetivos
+        #
+        # Em outras palavras:
+        #   "garanta que os objetivos ruins não estejam ruins demais",
+        # sem se tornar excessivamente conservador.
+        #
+        # Matematicamente igual no artigo:
+        #   f(R1,...,Rn) = Q_α({Ri})
+        #
+        # onde α define qual fração inferior dos objetivos importa.
+        # Neste experimento, α = 1/3.
+        # ============================================================
+
+
+        # ============================================================
+        # 1) EXTRAÇÃO DOS COMPONENTES DE RECOMPENSA
+        # ============================================================
+        # Aqui extraímos os mesmos componentes já usados nas outras
+        # funções de reward.
+        #
+        # IMPORTANTE:
+        #   Cada componente é normalizado para [0, 1].
+        #   Neste ponto ainda NÃO fazemos nenhuma agregação.
+
+        occ_pen = 0.0   # Penalidade de ocupação (0 = ideal, 1 = muito ruim)
+        uptime = 0.0    # Fração de tempo ativo (0 = ruim, 1 = perfeito)
+        sync = 0.0      # Regularidade de headways (0 = ruim, 1 = perfeito)
+        eff = 0.0       # Eficiência temporal (0 = ruim, 1 = perfeito)
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+
+
+        # ============================================================
+        # 2) CONVERSÃO PARA OBJETIVOS "MAIOR = MELHOR"
+        # ============================================================
+        # Para MORL, todos os objetivos precisam ter o mesmo sentido
+        # semântico: valores maiores indicam comportamento melhor.
+        #
+        # - uptime, sync e eff já seguem essa lógica
+        # - occ_pen é uma penalidade, então invertimos o sinal
+
+        obj_occ = -occ_pen      # menor penalidade → valor maior
+        obj_uptime = uptime
+        obj_sync = sync
+        obj_eff = eff
+
+
+        # ============================================================
+        # 3) APLICAÇÃO DE PESOS (ESCALA RELATIVA)
+        # ============================================================
+        # Diferente de uma soma ponderada tradicional:
+        #   → aqui os pesos NÃO definem contribuição final direta
+        #   → eles apenas ajustam a escala relativa entre objetivos
+        #
+        # Objetivos com peso zero são ignorados completamente,
+        # evitando que entrem na ordenação e afetem o quantil, aquele α la
+
+        w = self.reward_weights
+        objs = []
+        labels = []
+
+        if w["occ_penalty"] > 0:
+            objs.append(abs(w["occ_penalty"]) * obj_occ)
+            labels.append("occ")
+
+        if w["uptime_bonus"] > 0:
+            objs.append(w["uptime_bonus"] * obj_uptime)
+            labels.append("uptime")
+
+        if w["sync_score"] > 0:
+            objs.append(w["sync_score"] * obj_sync)
+            labels.append("sync")
+
+        if w["energy_efficiency"] > 0:
+            objs.append(w["energy_efficiency"] * obj_eff)
+            labels.append("eff")
+
+        # Converte para numpy para facilitar ordenação
+        objs = np.array(objs, dtype=np.float32)
+
+
+        # ============================================================
+        # 4) LOWER QUANTILE OPTIMIZATION (NÚCLEO DO MÉTODO)
+        # ============================================================
+        # Passo-chave da técnica:
+        #
+        # 1) Ordenamos os objetivos do pior para o melhor
+        # 2) Selecionamos o quantil inferior Q_α
+        #
+        # Exemplo com 4 objetivos:
+        #   sorted = [-1.0, 0.0, 0.9, 1.0]
+        #
+        # α = 1/3 → índice ≈ 1
+        # reward = 0.0
+        #
+        # Ou seja:
+        #   - ignoramos o pior extremo
+        #   - focamos na fronteira inferior aceitável
+
+        sorted_objs = np.sort(objs)  # crescente: pior → melhor
+
+        n = len(sorted_objs)
+        assert n > 0, "Nenhum objetivo ativo para escalarização"
+
+        # Índice do quantil inferior
+        # (n - 1) garante que o índice fique no range válido
+        q_idx = int(np.floor(alpha * (n - 1)))
+
+        reward = float(sorted_objs[q_idx])
+
+
+        # ============================================================
+        # 5) NORMALIZAÇÃO FINAL
+        # ============================================================
+        # Garante que o reward respeite o contrato esperado
+        # pelo algoritmo de RL (ex: PPO, DQN, A2C, etc.)
+        #
+        # Também evita explosões numéricas.
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+
+        # ============================================================
+        # 6) DEBUG E INTERPRETABILIDADE
+        # ============================================================
+        # Este log é pra ajudar no debug é útil para:
+        #   - validar o comportamento da escalarização
+        #   - entender quais objetivos estão segurando a política
+        #
+        # Ele mostra:
+        #   - valores individuais
+        #   - ordenação
+        #   - valor do quantil escolhido
+
+        if np.random.rand() < 0.005:
+            dbg = ", ".join(f"{l}={o:.3f}" for l, o in zip(labels, objs))
+            print(
+                f"[LOWER-Q DBG] α={alpha:.2f} | "
+                f"objs=[{dbg}] | "
+                f"sorted={sorted_objs.round(3)} | "
+                f"Qα={reward:.3f}"
+            )
+
+        return reward
+
+
 
 
 # This is the default stop class, which terminates the episode when the agent reaches the target node or takes the SERVICE_CENTER action
