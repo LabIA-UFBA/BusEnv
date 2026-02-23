@@ -211,7 +211,7 @@ class parallel_env(ParallelEnv):
 
         self.last_rain_eff = {agent: 0.0 for agent in self.agents}
 
-        self.reward_type = reward_raining_type # normal || raining
+        self.reward_type = reward_raining_type # normal | penalization | bonus
 
         self.date = None
 
@@ -228,7 +228,7 @@ class parallel_env(ParallelEnv):
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
 
-        self.debug_quantum = True   # DEBUG MODE ON
+        self.debug_quantum = False   # DEBUG MODE ON
 
 
 
@@ -1473,56 +1473,67 @@ class DefaultReward(RewardBaseClass):
         sync = self._sync_component(headways or [])
 
         # --- Base efficiency ---
-        eff_base = self._efficiency_component(float(estimated_time), float(expected_time))
-        eff = eff_base
-        rain_bonus = 0.0
-
-        # --- Rain effect on efficiency (Rain Reward logic) ---
-        if reward_type != "normal" and is_raining:
-            rain_strength = 0.2        # intensidade da chuva
-            memory_decay = 0.7         # quanto a memória pesa (0..1)
-
-            # penalização base (sempre suave)
-            eff = eff_base * (1.0 - rain_strength)
-
-            # teto baseado na memória (SOFT, não zera)
-            eff_cap = 1.0 - memory_decay * last_rain_eff
-            eff = min(eff, eff_cap)
-
-            # bônus por melhora relativa (igual Código B)
-            if eff_base > last_rain_eff:
-                rain_bonus += 0.2
-
-        eff = float(np.clip(eff, 0.0, 1.0))
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
         
-        if reward_type == "raining" and np.random.rand() < 0.005:
+        # --- Rain efficiency used only when rains ---
+        modified_eff = eff
+        rain_bonus_reward = 0.0
+
+        # ======================================================
+        # 🌧️ RAIN LOGIC (can be turned OFF with reward_type="normal")
+        # ======================================================
+        if is_raining and reward_type != "normal":
+
+            # -------- Penalization --------
+            if reward_type == "penalization":
+                rain_strength = 0.2 # Penalization intensity Lamda on article 
+                # modified_eff = eff * rain_strength * (1.0 - eff) # If it's raining, efficiency is penalized more
+                modified_eff = eff * (1.0 - rain_strength * (1.0 - eff))
+
+            # -------- Bonus on efficiency --------
+            elif reward_type == "bonus":
+                #rain_bonus_eff = 0.2 # Bonus intensity
+                #modified_eff = np.clip(eff + rain_bonus_eff * eff, 0.0, 1.0) # If it's raining, efficiency is rewarded more
+                modified_eff = eff
+
+           # -------- Relative improvement bonus (reward-level) --------
+            # rain_bonus_reward = 0.2 if eff > last_rain_eff else 0.0 INICIALMENTE VAMOS USAR SO O BONUS OU PENALIZAÇÃO
+
+        # Safety clip
+        modified_eff = float(np.clip(modified_eff, 0.0, 1.0))
+
+        
+        if reward_type != "normal" and np.random.rand() < 0.005:
             print(
                 f"[RAIN DBG] raining={is_raining} "
-                f"eff_base={eff_base:.3f} "
-                f"eff_used={eff:.3f} "
+                f"eff_base={eff:.3f} "
+                f"eff_modified={modified_eff:.3f} "
                 f"last_rain_eff={last_rain_eff:.3f}"
             )
-
-
-        #print("\n--- Componentes de Recompensa (Step) ---")
-        #print(f"  | Ocupação (occ_pen): {occ_pen:.4f}")
-        #print(f"  | Tempo de Atividade (uptime): {uptime:.4f}")
-        #print(f"  | Sincronização (sync): {sync:.4f}")
-        #print(f"  | Eficiência (eff): {eff:.4f}")
 
         assert 0.0 <= occ_pen <= 1.0, f"occ_pen fora do range: {occ_pen}"
         assert 0.0 <= uptime <= 1.0, f"uptime fora do range: {uptime}"
         assert 0.0 <= sync <= 1.0, f"sync fora do range: {sync}"
         assert 0.0 <= eff <= 1.0, f"eff fora do range: {eff}"
 
+
         # Weighted combination (keeping each term in [-1, +1])
         # occ_pen enters with NEGATIVE sign
         w = self.reward_weights
+
+        # ------------------------------------------------------
+        # Efficiency weight (ONLY bonus doubles it)
+        # ------------------------------------------------------
+        eff_weight = w["energy_efficiency"]
+        if is_raining and reward_type == "bonus":
+            eff_weight = 2.0 * w["energy_efficiency"]
+        
+        
         reward = (
             -w["occ_penalty"] * occ_pen +
              w["uptime_bonus"] * uptime + # uptime esta sendo um positivo que esta tendendo a zero, enquanto ele vai
              w["sync_score"] * sync +
-             w["energy_efficiency"] * eff * (2.0 if is_raining else 1.0) + rain_bonus # w["energy_efficiency"] * eff
+             eff_weight * modified_eff + rain_bonus_reward # w["energy_efficiency"] * eff
         )
 
         # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
@@ -1541,8 +1552,8 @@ class DefaultReward(RewardBaseClass):
             print(
                 f"[EFF CHECK] "
                 f"rain={is_raining} | "
-                f"eff_base={eff_base:.3f} | "
-                f"eff_used={eff:.3f} | "
+                f"eff_base={eff:.3f} | "
+                f"modified_eff={modified_eff:.3f} | "
                 f"est={estimated_time:.1f} | "
                 f"exp={expected_time:.1f}"
             )
@@ -1555,7 +1566,7 @@ class DefaultReward(RewardBaseClass):
                 f"sync={sync:.3f} | "
                 f"eff={eff:.3f} | "
                 f"rain={is_raining} | "
-                f"bonus={rain_bonus:.3f} | "
+                f"bonus={rain_bonus_reward:.3f} | "
                 f"final={reward:.3f}"
             )
 
