@@ -24,11 +24,11 @@ class parallel_env(ParallelEnv):
     # avg_travel_time_AB, future_demand_at_B, occupancy_rate, uptime_normalized: dicts with precomputed data
     # real_routes: dict mapping agent_id to a fixed route (list of nodes)
     # route_metadata: dict with metadata for each route (optional)
-    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, agents_per_route=None,
+    def __init__(self, network: nx.Graph, actions_amount: int, max_steps: int, num_agents=2, use_rain: bool = False, agents_per_route=None,
                 use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
-                real_routes=None, route_metadata=None):  
+                real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal"):  
 
         # --- Basic configuration ---
         self.network = network
@@ -111,6 +111,14 @@ class parallel_env(ParallelEnv):
         }
         self.occupancy_range = (0.6, 0.9)
 
+        # --- Risk feature (forecast-based) ---
+        # Computes the probability of leaving the ideal occupancy range in the next N route-steps
+        # (no time-of-day computation; purely step-ahead along the route)
+        self.enable_risk_feature = bool(enable_risk_feature)
+        self.risk_horizon_steps = int(risk_horizon_steps)
+        # route_id -> {seq_idx(0-based along route): predicted occupancy_norm in [0,1]}
+        self.occ_pred_by_route_seq = defaultdict(dict)
+
         # --- Observation and action spaces ---
         self.observation_spaces = {
             agent: self.observation_space(agent) for agent in self.possible_agents
@@ -137,7 +145,7 @@ class parallel_env(ParallelEnv):
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
 
-        self.occupancy_source = "quantum_lstm" # "real" | "quantum_qru" | "quantum_lstm"
+        self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm"
 
         self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
 
@@ -183,6 +191,31 @@ class parallel_env(ParallelEnv):
         
         self.use_only_mean_data = use_only_mean_data   # 1 = use only mean data, 0 = use daily data
 
+        # ==== Rain variables ====
+
+        # --- Climate / Rain control ---
+        self.use_rain = use_rain   
+
+        # --- Climate data (Rain) ---
+        if self.use_rain:
+            # If the component is up, then we use it 
+            with open(
+                '/mnt/ssd1/wesley/BusEnv/src/training_observation/climate_data/climate_data_2.pkl',
+                'rb'
+            ) as f:
+                self.climate_data = pickle.load(f)
+            print("RAIN TRUE, DADOS CARREGADOS EM", self.climate_data)
+        else:
+            # When theres is no use of the rain
+            self.climate_data = None
+
+        self.last_rain_eff = {agent: 0.0 for agent in self.agents}
+
+        self.reward_type = reward_raining_type # normal | penalization | bonus
+
+        self.date = None
+
+
         # Create metrics file if it doesn't exist
         if not os.path.exists(self.metrics_file):
             with open(self.metrics_file, "w", newline="") as f:
@@ -195,7 +228,7 @@ class parallel_env(ParallelEnv):
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
 
-        self.debug_quantum = True   # DEBUG MODE ON
+        self.debug_quantum = False   # DEBUG MODE ON
 
 
 
@@ -208,6 +241,18 @@ class parallel_env(ParallelEnv):
         if seed is not None:
             self.np_random, _ = gym.utils.seeding.np_random(seed)
 
+        # --- Defensive date initialization ---
+        if not hasattr(self, "date") or self.date is None:
+            if hasattr(self, "daily_files") and len(self.daily_files) > 0:
+                first_file = self.daily_files[self.current_day_index]
+                self.date = (
+                    first_file
+                    .replace("daily_data_", "")
+                    .replace(".pkl", "")
+                )
+            else:
+                self.date = "1970-01-01"  # absolut fallback 
+
         # --- Inicialização persistente ---
         if not hasattr(self, "current_day_index"):
             self.current_day_index = 0
@@ -218,7 +263,7 @@ class parallel_env(ParallelEnv):
         if not hasattr(self, "sim_done"):
             self.sim_done = False
 
-        # --- Estruturas básicas ---
+        # --- basic structure ---
         self.agents = self.possible_agents[:]
         self.agent_done = {a: False for a in self.possible_agents}
         self.states = {}
@@ -252,8 +297,10 @@ class parallel_env(ParallelEnv):
             self.simulated_days += 1
             next_file = self.daily_files[self.current_day_index]
             next_date = next_file.replace("daily_data_", "").replace(".pkl", "")
+            self.date = next_date
             print(f"\n🔁 [ENV] Advancing to next day: {next_date} ({self.current_day_index + 1}/{self.total_days})")
             print(f"📆 [ENV] Total simulated days so far: {self.simulated_days}")
+            print("self.date used only when the raining is activate", self.date)
             self.day_done = False  # reset flag
             self.agents_finished_previous_day = False # reset flag
 
@@ -263,7 +310,7 @@ class parallel_env(ParallelEnv):
         except Exception as e:
             print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
             self._use_fallbacks()
-
+        
         # --- Initialization of fixed routes (if they don't already exist) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
             self.fixed_agent_routes = {}
@@ -373,6 +420,27 @@ class parallel_env(ParallelEnv):
             travel_time = self.avg_travel_time_AB.get((initial, next_node), self.default_travel_time)
             normalized_travel_time = min(travel_time / self.max_travel_time, 1.0)
 
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
+            # --- Climate / Rain: initial observation ---
+            if self.use_rain and self.climate_data is not None:
+                time_sec = self.agent_times[agent]
+                hour_of_day = int(time_sec // 3600)
+                hour_str = f"{hour_of_day:02d}00 UTC"
+
+                date_str = str(self.date).replace('-', '/')
+                row = self.climate_data[
+                    (self.climate_data['date'] == date_str) &
+                    (self.climate_data['hour'] == hour_str)
+                ]
+
+                is_raining = False
+                if not row.empty:
+                    is_raining = row['precip'].iloc[0] > 0.0
+            else:
+                # Rain off
+                is_raining = False
+
             obs_array = np.array([
                 self.agent_times[agent] / (24 * 60 * 60),
                 self.agent_states[agent]["occupancy"],
@@ -382,6 +450,8 @@ class parallel_env(ParallelEnv):
                 1.0 if self.agent_states[agent]["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(initial)],
                 self.node_to_idx[str(next_node)],
+                1.0 if is_raining else 0.0,
+                occ_risk,
             ], dtype=np.float32)
 
             clipped_obs = np.clip(
@@ -493,6 +563,26 @@ class parallel_env(ParallelEnv):
             idx = state["route_idx"]
             curr_node = route[idx]
 
+            # --- Climate / Rain: check current weather ---
+            if self.use_rain and self.climate_data is not None:
+                time_sec = self.agent_times[agent]
+                hour_of_day = int(time_sec // 3600)
+                hour_str = f"{hour_of_day:02d}00 UTC"
+
+                date_str = self.date.replace('-', '/')
+                row = self.climate_data[
+                    (self.climate_data['date'] == date_str) &
+                    (self.climate_data['hour'] == hour_str)
+                ]
+
+                is_raining = False
+                if not row.empty:
+                    is_raining = row['precip'].iloc[0] > 0.0
+            else:
+                # Rain off
+                is_raining = False
+
+
             # === ACTION 0: WAIT ===
             if action == 0:
                 if action == 0 and self.steps[agent] % 20 == 0:
@@ -593,12 +683,13 @@ class parallel_env(ParallelEnv):
                     self.headways[next_node] = []
                 self.headways[next_node].append(self.agent_times[agent])
 
+                """
                 if len(self.headways[next_node]) > 1:
                     print(
                         f"[HEADWAY][node {next_node}] "
                         f"times={sorted(self.headways[next_node])}"
                     )
-
+                """
 
                 reward = self.reward.getReward(
                     new_state=next_node,
@@ -610,8 +701,28 @@ class parallel_env(ParallelEnv):
                     expected_time=self.expected_times[agent],
                     delay=0,
                     agent_state=state,
-                    headways=self.headways[next_node]
+                    headways=self.headways[next_node],
+                    is_raining=is_raining,
+                    reward_type=self.reward_type,
+                    last_rain_eff=self.last_rain_eff.get(agent, 0.0)
                 )
+                
+                self.last_rain_eff[agent] = self.reward._efficiency_component(
+                    float(self.estimated_times[agent]),
+                    float(self.expected_times[agent])
+                )
+
+                if self.episode_step_counter % 100 == 0:
+                    print(
+                        f"[STEP→REWARD] "
+                        f"agent={agent} | "
+                        f"action={action} | "
+                        f"node={curr_node}->{next_node} | "
+                        f"time={self.agent_times[agent]:.0f}s | "
+                        f"reward={reward:.3f}"
+                    )
+
+
 
                 """
                 print(
@@ -709,12 +820,13 @@ class parallel_env(ParallelEnv):
                 self.node_occupancy[current_pos] = []
             self.node_occupancy[current_pos].append(agent)
 
+            """
             if len(self.node_occupancy[current_pos]) > 1:
                 print(
                     f"[OCCUPANCY] node={current_pos} "
                     f"agents={self.node_occupancy[current_pos]}"
                 )
-
+            """
 
             #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
                # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
@@ -748,6 +860,8 @@ class parallel_env(ParallelEnv):
             tt_next = min(tt_next_raw, TRAVEL_TIME_CAP)
             normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
 
+            occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+
             # === Observation update ===
             if state.get("status") != "active":
                 print(
@@ -764,6 +878,8 @@ class parallel_env(ParallelEnv):
                 1.0 if state["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(curr_node)],
                 self.node_to_idx[str(next_node)],
+                1.0 if is_raining else 0.0,
+                occ_risk,
             ], dtype=np.float32)
 
             observations[agent] = np.clip(
@@ -849,7 +965,9 @@ class parallel_env(ParallelEnv):
                 0.0,    # uptime
                 0.0,    # maintenance_status
                 0.0,    # curr_node_id
-                0.0     # next_node_id
+                0.0,    # next_node_id
+                0.0,    # is_raining (0 ou 1)
+                0.0     # occ_risk_out
             ], dtype=np.float32),
             high=np.array([
                 1.0,    # time_of_day_norm
@@ -859,13 +977,101 @@ class parallel_env(ParallelEnv):
                 1.0,    # uptime
                 1.0,    # manutenção ok
                 2e9,    # curr_node_id
-                2e9     # next_node_id
+                2e9,    # next_node_id
+                1.0,    # is_raining (0 ou 1)
+                1.0     # occ_risk_out
             ], dtype=np.float32)
         )
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent): # Define the action space for each agent
         return spaces.Discrete(self.actions_amount)
+    
+    # ------------------------------------------------------------------
+    # Risk feature helpers (route-step-ahead, no time computations)
+    # ------------------------------------------------------------------
+    def _advance_route_idx_bounce(self, idx: int, going_forward: bool, route_length: int):
+        """Advance one position with the same 'bounce at ends' rule used in MOVE."""
+        if route_length <= 1:
+            return idx, going_forward
+
+        if going_forward:
+            if idx + 1 < route_length:
+                return idx + 1, True
+            # bounce back
+            return max(0, idx - 1), False
+        else:
+            if idx - 1 >= 0:
+                return idx - 1, False
+            # bounce forward
+            return min(route_length - 1, idx + 1), True
+
+    def _future_route_indices(self, idx: int, going_forward: bool, route_length: int, horizon: int):
+        """List of future indices (excluding current) for the next 'horizon' route-steps."""
+        out = []
+        i = int(idx)
+        d = bool(going_forward)
+        for _ in range(max(0, int(horizon))):
+            i, d = self._advance_route_idx_bounce(i, d, route_length)
+            out.append(i)
+        return out
+
+    def _get_predicted_occupancy_for_route_seq(self, route_id: str, seq_idx: int):
+        """Fetch occupancy prediction aligned to a route's pt_sequence (0-based)."""
+        if not route_id:
+            return None
+        mp = getattr(self, "occ_pred_by_route_seq", None)
+        if not mp:
+            return None
+        v = mp.get(route_id, {}).get(int(seq_idx))
+        return None if v is None else float(v)
+
+    def _compute_occ_risk_for_agent(self, agent: str, horizon: int = None) -> float:
+        """Probability of leaving the ideal occupancy range in the next N route-steps."""
+        if not getattr(self, "enable_risk_feature", False):
+            return 0.0
+
+        H = int(self.risk_horizon_steps if horizon is None else horizon)
+        if H <= 0:
+            return 0.0
+
+        state = self.agent_states.get(agent)
+        if not state:
+            return 0.0
+
+        route = state.get("route") or []
+        route_length = len(route)
+        if route_length < 2:
+            return 0.0
+
+        idx = int(state.get("route_idx", 0))
+        going_forward = bool(state.get("going_forward", True))
+        route_id = state.get("route_id")
+
+        min_occ, max_occ = self.occupancy_range
+
+        future_idxs = self._future_route_indices(idx, going_forward, route_length, H)
+        out_count = 0
+
+        for j in future_idxs:
+            # seq_idx is aligned with route order (same convention as: seq = pt_sequence - 1)
+            occ_pred = self._get_predicted_occupancy_for_route_seq(route_id, j)
+
+            if occ_pred is None:
+                # fallback: use node-level occupancy estimate (possibly overridden by predictions)
+                try:
+                    node_int = int(route[j])
+                except Exception:
+                    node_int = None
+                if node_int is not None:
+                    occ_pred = float(self.occupancy_rate.get(node_int, 0.0))
+                else:
+                    occ_pred = 0.0
+
+            if occ_pred < min_occ or occ_pred > max_occ:
+                out_count += 1
+
+        return float(out_count) / float(H)
     
     def generate_random_delay(self, start, target):
         try:
@@ -975,6 +1181,9 @@ class parallel_env(ParallelEnv):
                 f"source={self.occupancy_source} | "
                 f"service_day={service_day}"
             )
+
+            # reset per-day route-sequence predictions (used by risk features)
+            self.occ_pred_by_route_seq = defaultdict(dict)
 
             self._override_occupancy_with_predictions_node_level(
                 service_day=service_day
@@ -1106,7 +1315,7 @@ class parallel_env(ParallelEnv):
 
                 node_predictions[node_id].append(occupancy_norm)
 
-                # 🔬 Strong debug (sampled)
+                # Strong debug (sampled)
                 if len(node_predictions[node_id]) == 1:
                     print(
                         f"🧪 [Q-OCC RAW→NORM] "
@@ -1132,6 +1341,22 @@ class parallel_env(ParallelEnv):
             self.occupancy_rate[node] = sum(values) / len(values)
             overridden_nodes += 1
 
+        # Build per-route, per-sequence prediction map (used by risk feature)
+        # We store 0-based seq_idx (seq = pt_sequence - 1) to match route_idx convention.
+        try:
+            self.occ_pred_by_route_seq = {
+                rid: {s: (sum(vals) / len(vals)) for s, vals in seq_map.items() if vals}
+                for rid, seq_map in route_seq_predictions.items()
+            }
+        except Exception as e:
+            print(f"⚠️ [ENV] Failed building occ_pred_by_route_seq: {e}")
+            self.occ_pred_by_route_seq = defaultdict(dict)
+
+        if self.debug_quantum and self.occ_pred_by_route_seq:
+            # show a small sample for sanity
+            sample_rid = next(iter(self.occ_pred_by_route_seq.keys()))
+            sample_items = sorted(self.occ_pred_by_route_seq[sample_rid].items())[:5]
+            print(f"🧪 [Q-PRED MAP] route={sample_rid} sample(seq->occ)={sample_items}")
         print(
             f"✅ [ENV] Quantum occupancy applied | "
             f"source={self.occupancy_source} | "
@@ -1232,7 +1457,8 @@ class DefaultReward(RewardBaseClass):
         self,
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
-        agent_state=None, headways=None
+        agent_state=None, headways=None, is_raining=False, 
+        reward_type="normal", last_rain_eff=0.0 
     ):
         # Normalized components
         occ_pen = 0.0
@@ -1245,30 +1471,69 @@ class DefaultReward(RewardBaseClass):
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
         sync = self._sync_component(headways or [])
-        eff = self._efficiency_component(float(estimated_time), float(expected_time))
 
-        #print("\n--- Componentes de Recompensa (Step) ---")
-        #print(f"  | Ocupação (occ_pen): {occ_pen:.4f}")
-        #print(f"  | Tempo de Atividade (uptime): {uptime:.4f}")
-        #print(f"  | Sincronização (sync): {sync:.4f}")
-        #print(f"  | Eficiência (eff): {eff:.4f}")
+        # --- Base efficiency ---
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+        
+        # --- Rain efficiency used only when rains ---
+        modified_eff = eff
+        rain_bonus_reward = 0.0
+
+        # ======================================================
+        # 🌧️ RAIN LOGIC (can be turned OFF with reward_type="normal")
+        # ======================================================
+        if is_raining and reward_type != "normal":
+
+            # -------- Penalization --------
+            if reward_type == "penalization":
+                rain_strength = 0.2 # Penalization intensity Lamda on article 
+                # modified_eff = eff * rain_strength * (1.0 - eff) # If it's raining, efficiency is penalized more
+                modified_eff = eff * (1.0 - rain_strength * (1.0 - eff))
+
+            # -------- Bonus on efficiency --------
+            elif reward_type == "bonus":
+                #rain_bonus_eff = 0.2 # Bonus intensity
+                #modified_eff = np.clip(eff + rain_bonus_eff * eff, 0.0, 1.0) # If it's raining, efficiency is rewarded more
+                modified_eff = eff
+
+           # -------- Relative improvement bonus (reward-level) --------
+            # rain_bonus_reward = 0.2 if eff > last_rain_eff else 0.0 INICIALMENTE VAMOS USAR SO O BONUS OU PENALIZAÇÃO
+
+        # Safety clip
+        modified_eff = float(np.clip(modified_eff, 0.0, 1.0))
+
+        
+        if reward_type != "normal" and np.random.rand() < 0.005:
+            print(
+                f"[RAIN DBG] raining={is_raining} "
+                f"eff_base={eff:.3f} "
+                f"eff_modified={modified_eff:.3f} "
+                f"last_rain_eff={last_rain_eff:.3f}"
+            )
 
         assert 0.0 <= occ_pen <= 1.0, f"occ_pen fora do range: {occ_pen}"
         assert 0.0 <= uptime <= 1.0, f"uptime fora do range: {uptime}"
         assert 0.0 <= sync <= 1.0, f"sync fora do range: {sync}"
         assert 0.0 <= eff <= 1.0, f"eff fora do range: {eff}"
 
-        w = self.reward_weights
-        #print("  | Pesos:", w)
 
         # Weighted combination (keeping each term in [-1, +1])
         # occ_pen enters with NEGATIVE sign
         w = self.reward_weights
+
+        # ------------------------------------------------------
+        # Efficiency weight (ONLY bonus doubles it)
+        # ------------------------------------------------------
+        eff_weight = w["energy_efficiency"]
+        if is_raining and reward_type == "bonus":
+            eff_weight = 2.0 * w["energy_efficiency"]
+        
+        
         reward = (
             -w["occ_penalty"] * occ_pen +
              w["uptime_bonus"] * uptime + # uptime esta sendo um positivo que esta tendendo a zero, enquanto ele vai
              w["sync_score"] * sync +
-             w["energy_efficiency"] * eff
+             eff_weight * modified_eff + rain_bonus_reward # w["energy_efficiency"] * eff
         )
 
         # Normalize by the sum of weights to keep magnitude around ~[-1, +1]
@@ -1282,6 +1547,29 @@ class DefaultReward(RewardBaseClass):
         # reward += 0.2
         # print(f"\n--- Recompensa Final Normalizada: {final_reward:.4f} ---")
         reward = float(np.clip(reward, -1.0, 1.0))
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[EFF CHECK] "
+                f"rain={is_raining} | "
+                f"eff_base={eff:.3f} | "
+                f"modified_eff={modified_eff:.3f} | "
+                f"est={estimated_time:.1f} | "
+                f"exp={expected_time:.1f}"
+            )
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[REWARD BREAKDOWN] "
+                f"occ={occ_pen:.3f} | "
+                f"uptime={uptime:.3f} | "
+                f"sync={sync:.3f} | "
+                f"eff={eff:.3f} | "
+                f"rain={is_raining} | "
+                f"bonus={rain_bonus_reward:.3f} | "
+                f"final={reward:.3f}"
+            )
+
 
         if np.random.rand() < 0.005:  # ~0.5% dos steps
             print(
@@ -1776,4 +2064,3 @@ class DefaultReward(RewardBaseClass):
 class DefaultStopClass(StopConditionBaseClass):
     def isTerminated(self, state, previousState, action, target, graph):
         return state == target or action == 2
-

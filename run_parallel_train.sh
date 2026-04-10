@@ -18,7 +18,7 @@ cd MARLlib
 export PYTHONPATH=$(pwd):$PYTHONPATH
 cd ..
 
-# Caminho do trainer parametrizado
+#Caminho do trainer parametrizado
 TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 
 # ✅ Lista com TODOS os algoritmos (edite à vontade)
@@ -27,7 +27,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("mappo")
+algos=("ia2c" "ippo")
 
 # Funcionaram 100%
 # IA2C 
@@ -42,7 +42,7 @@ algos=("mappo")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade) 
-runs_per_algo=10
+runs_per_algo=25
 
 # Pastas de saída
 LOG_DIR="${ROOT_DIR}/logs"
