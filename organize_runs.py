@@ -2,11 +2,11 @@ import os
 import shutil
 
 # ===== CONFIGURAÇÕES =====
-BASE_DIR = "exp_results/matrpo_mlp_sunt_bus"
+BASE_DIR = "exp_results/ippo_mlp_sunt_bus"
 
 FILTER_KEY = "Trainer_sunt_bus_sunt_bus"
 
-RUN_TYPE = "MATRPO-Rain-Bonus"
+RUN_TYPE = "IPPO-Normal-Comp"
 WEIGHTS = "(0.5,0.7,0.5,0.6)"
 
 DRY_RUN = False
