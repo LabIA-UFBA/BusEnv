@@ -8,6 +8,9 @@
 #   ./logs        (será criado se não existir)
 # ---------------------------------------------------------
 
+export RAY_TMPDIR=/mnt/ssd1/ray_tmp
+export TMPDIR=/mnt/ssd1/tmp
+
 # Descobre a raiz do projeto (pasta onde está este script)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -27,7 +30,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("ia2c" "ippo")
+algos=("hatrpo" "mappo" "matrpo")
 
 # Funcionaram 100%
 # IA2C 

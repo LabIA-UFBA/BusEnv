@@ -320,11 +320,11 @@ class parallel_env(ParallelEnv):
             # CHANGE: function to decide number of agents per route (based on length)
             def _agents_for_path(path_len: int, default_agents: int) -> int:
                 if path_len < 15:
-                    return 1
+                    return int(default_agents) # Antes era 1 
                 if path_len <= 30:
-                    return 1 # Antes era 2 
+                    return int(default_agents) # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
-                return max(1, int(default_agents))
+                return max(1, int(default_agents)) # DO JEITO QUE TA AQUI EU TO SEMPRE RETORNANDO POR ROTA O VALOR QUE EU SETO 
 
             default_agents_per_route = getattr(self, "agents_per_route", 1)
 
@@ -679,19 +679,43 @@ class parallel_env(ParallelEnv):
                 )
                 """
 
-                if next_node not in self.headways:
-                    self.headways[next_node] = []
-                self.headways[next_node].append(self.agent_times[agent])
+                #if next_node not in self.headways:
+                #    self.headways[next_node] = []
+                #self.headways[next_node].append(self.agent_times[agent])
 
-                """
-                if len(self.headways[next_node]) > 1:
+                # --- identificar rota ---
+                route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
+                route_id = route_id[0] if route_id else "unknown"  # <<< NOVO >>>
+
+                # --- direção ---
+                direction = state.get("going_forward", True)  # <<< NOVO >>>
+
+                # --- chave correta ---
+                key = (route_id, next_node, direction)  # <<< NOVO >>>
+
+                # --- armazenamento ---
+                if key not in self.headways:
+                    self.headways[key] = []
+
+                self.headways[key].append(self.agent_times[agent])
+
+                # --- janela temporal ---
+                MAX_HEADWAY_TIME = 1800 
+                self.headways[key] = [
+                    t for t in self.headways[key]
+                    if self.agent_times[agent] - t <= MAX_HEADWAY_TIME
+                ]
+
+                if self.episode_step_counter % 50 == 0:  # DEBUG HADWAY
                     print(
-                        f"[HEADWAY][node {next_node}] "
-                        f"times={sorted(self.headways[next_node])}"
+                        f"[HEADWAY DEBUG] key={key} | "
+                        f"agent={agent} | "
+                        f"time={self.agent_times[agent]:.1f} | "
+                        f"n={len(self.headways[key])} | "
+                        f"times={sorted(self.headways[key])}"
                     )
-                """
-
-                reward = self.reward.getReward(
+                
+                reward = self.reward.getRewardHard( 
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -701,11 +725,27 @@ class parallel_env(ParallelEnv):
                     expected_time=self.expected_times[agent],
                     delay=0,
                     agent_state=state,
-                    headways=self.headways[next_node],
+                    headways=self.headways[key], # headways=self.headways[next_node]
+                )
+
+                """
+                # CHAMADA PADRÃO COM O RAIN (CHUVA)
+                reward = self.reward.getReward( 
+                    new_state=next_node,
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=self.headways[key], # headways=self.headways[next_node]
                     is_raining=is_raining,
                     reward_type=self.reward_type,
                     last_rain_eff=self.last_rain_eff.get(agent, 0.0)
                 )
+                """
                 
                 self.last_rain_eff[agent] = self.reward._efficiency_component(
                     float(self.estimated_times[agent]),
@@ -740,6 +780,8 @@ class parallel_env(ParallelEnv):
             # === ACTION 2: SERVICE CENTER ===
             elif action == 2:
                 sc_node = self.get_nearest_service_center(curr_node)
+                if action == 2 and self.steps[agent] % 20 == 0:
+                    print(f"[SERVICE CENTER][{agent}] time={self.agent_times[agent]:.0f}s")
                 try:
                     path = nx.shortest_path(
                         self.network,
@@ -765,18 +807,21 @@ class parallel_env(ParallelEnv):
                         print("state[fuel]: ", state["fuel"])
                         print("VEIO PRO SERVICE CENTER SEM CONDIÇÃO DE CHEGAR")
                     else:
-                        self.agent_times[agent] += total_travel_time
-                        self.estimated_times[agent] += total_travel_time
+                        # self.agent_times[agent] += total_travel_time # Modelo anterior
+                        # self.estimated_times[agent] += total_travel_time
+                        penalized_time = total_travel_time * 0.4  # Redução de tempo para um penalização mais leve no tempo
+                        self.agent_times[agent] += penalized_time  # Redução de tempo para um penalização mais leve no tempo
+                        self.estimated_times[agent] += penalized_time 
                         state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
                         # total_travel_time_hors = total_travel_time / (12 * 3600)
                         state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
                         # state["uptime"] = max(1.0, state["uptime"] / (total_travel_time + 1e-8))
                         state["fuel"] = 100.0
-                        state["uptime"] = 1.0
+                        state["uptime"] = min(state["uptime"] + 0.3, 1.0) # state["uptime"] = 1.0
                         state["maintenance_status"] = "ok"
                         self.states[agent] = sc_node
-                        # reward = -1.0 * (1 + total_travel_time / 600.0) # antes era -1.0 * 
-                        reward = 0
+                        reward = 0 # PADRÃO
+                        # reward = -0.2 * (total_travel_time / 600.0) # IMPACTO NA RECOMPENSA 
 
             # === INVALID ACTION ===
             else:
@@ -906,11 +951,11 @@ class parallel_env(ParallelEnv):
                 leader = self.route_leader.get(rid)
                 if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
                     self.route_leader[rid] = agent
-                    print(
-                        f"[LEADER CHANGE] route={rid} "
-                        f"new={agent} "
-                        f"time={self.agent_times[agent]:.0f}"
-                    )
+                   # print(
+                   #     f"[LEADER CHANGE] route={rid} "
+                   #     f"new={agent} "
+                   #     f"time={self.agent_times[agent]:.0f}"
+                   # )
 
         # === Global post-processing ===
         all_finished = all(self.agent_times[a] >= END_OF_DAY for a in self.possible_agents)
@@ -1426,20 +1471,29 @@ class DefaultReward(RewardBaseClass):
         if not headways or len(headways) < 3: # Estou passando todos os agentes e não os agentes na rota especifica
             return 0.0  # Not enough information to assess regularity
 
+        headways = sorted(headways)  # ORDENAR
+        
         # intervals in seconds
         intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)]
-        # remove noise/invalid intervals
+        # <<< DEBUG AQUI >>>
+        if len(intervals) > 0 and random.random() < 0.05:  # amostragem
+            print(
+                f"[SYNC DEBUG] intervals={intervals} | "
+                f"target={self.target_headway}"
+            )
+        # remove noise/invalid intervals não existe “intervalo negativo” entre dois veículos então é removido se tiver
         intervals = [x for x in intervals if x > 0]
         if len(intervals) < 2:
             return 0.0
 
-        # RMS deviation versus target
+        # Desvio RMS (Root Mean Square) dos intervalos em relação ao valor ideal (600 (10 minutos))
+        # Para cada intervalo real, eu to medindo o quanto ele errou em relação ao desejado 
         diffs = [(x - self.target_headway) for x in intervals]
         mean_sq = sum(d * d for d in diffs) / len(diffs)
         rms = mean_sq ** 0.5  # in seconds
 
         # Normalized relative deviation (0=perfect, 1=bad limit)
-        rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8))
+        rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8)) # rms erro absoluto (em segundos) é normalizado
 
         # Convert to "score" in [0,1], where 1 is good
         return 1.0 - rel
@@ -1592,7 +1646,7 @@ class DefaultReward(RewardBaseClass):
         agent_state=None, headways=None
     ):
  
-       # Hard-min (minimax) scalarization:
+       # Hard-min (minimax) scalarization - Worst-Case Optimization (Minimax / Max-Min)
        # - converte componentes para objetivos "maior é melhor"
        # - calcula reward = min(obj_i) (considerando pesos)
        # - normaliza/clipa para manter contrato [-1, 1]
@@ -1658,6 +1712,17 @@ class DefaultReward(RewardBaseClass):
 
         # --- 5) garantia de contrato e estabilidade ---
         reward = float(np.clip(reward, -1.0, 1.0))
+        
+        if np.random.rand() < 0.005:  # ~0.5% dos steps
+            print(
+                f"[REWARD DBG] "
+                f"occ_pen={occ_pen:.3f} "
+                f"uptime={uptime:.3f} "
+                f"sync={sync:.3f} "
+                f"eff={eff:.3f} | "
+                f"weights={w} | "
+                f"final={reward:.3f}"
+            )
         
         return reward
 
@@ -1885,6 +1950,17 @@ class DefaultReward(RewardBaseClass):
                 f"[MAX-MEDIAN DBG] "
                 f"objs=[{dbg}] | "
                 f"median={reward:.3f}"
+            )
+
+        if np.random.rand() < 0.005:  # ~0.5% dos steps
+            print(
+                f"[REWARD DBG] "
+                f"occ_pen={occ_pen:.3f} "
+                f"uptime={uptime:.3f} "
+                f"sync={sync:.3f} "
+                f"eff={eff:.3f} | "
+                f"weights={w} | "
+                f"final={reward:.3f}"
             )
 
         return reward

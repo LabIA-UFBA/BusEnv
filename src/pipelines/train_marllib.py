@@ -272,6 +272,14 @@ DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20, "sgd_minibatch_size": 128}
 # Main entrypoint
 # ------------------------------
 def main():
+    
+    import os
+    os.environ["RAY_TMPDIR"] = "/mnt/ssd1/ray_tmp"
+    os.environ["TMPDIR"] = "/mnt/ssd1/tmp"
+
+    os.makedirs("/mnt/ssd1/ray_tmp", exist_ok=True)
+    os.makedirs("/mnt/ssd1/tmp", exist_ok=True)
+
     parser = argparse.ArgumentParser(description="Train MARLlib algorithms on SUNT Bus env")
     parser.add_argument(
         "--algo",
@@ -311,10 +319,11 @@ def main():
     run_config = {
         "local_mode": False,
         "stop": {"timesteps_total": 400000},  # adjust as needed
-        "checkpoint_freq": 200,
+        "checkpoint_freq": 0,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 32,     # adjust as needed
+        "num_workers": 22,     # adjust as needed
         "share_policy": "individual",
+        "local_dir": "/mnt/ssd1/ray_results",
     }
 
 
