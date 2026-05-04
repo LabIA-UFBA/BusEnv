@@ -72,7 +72,6 @@ A core feature of this project is flexible reward experimentation.
 - Learning stability and convergence  
 - Policy interpretability  
 
----
 
 ---
 
