@@ -135,7 +135,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_data_path = "Path to daily data files    /src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -147,7 +147,7 @@ class parallel_env(ParallelEnv):
 
         self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm"
 
-        self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
+        self.quantum_data_path = ("Quamtum data path loading") # Quamtum data path loading
 
         self.quantum_routes = [
             "20001_310_1",
@@ -200,7 +200,7 @@ class parallel_env(ParallelEnv):
         if self.use_rain:
             # If the component is up, then we use it 
             with open(
-                '/mnt/ssd1/wesley/BusEnv/src/training_observation/climate_data/climate_data_2.pkl',
+                'Climate data path',
                 'rb'
             ) as f:
                 self.climate_data = pickle.load(f)

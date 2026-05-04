@@ -1,19 +1,23 @@
-# 🚍 Bus Env – Multi-Agent Urban Bus Simulation (Modular)
+# 🚍 MORL Env – Multi-Objective Reinforcement Learning for Urban Transportation
 
-This project provides a **multi-agent reinforcement learning environment** for urban bus operations, based on real-world data from the **Salvador Urban Network Transportation (SUNT)** system.  
-It has been refactored into a **modular package** with a clean structure, clear separation of concerns, and a unified CLI.
+This project provides a **multi-objective reinforcement learning (MORL) environment** for studying decision-making in complex urban public transportation systems.
+
+Rather than focusing solely on control or simulation, this environment is designed to support **research on reward design, objective trade-offs, and policy behavior under multiple competing goals** in realistic, large-scale settings.
 
 ---
 
-## 🚌 Overview
+## 🚌 Environment Overview
 
-The **Multi-Agent Urban Bus Simulation Environment** is built on top of real public transportation data from Salvador (Brazil).  
-It simulates the operation of multiple buses as independent agents navigating a real transit network, enabling the development and testing of intelligent control strategies for public transport.
+The MORL Env simulates a **real-world urban transit system** using data from Salvador (Brazil).
 
-Key aspects:
-- Realistic, **data-driven** training scenarios.  
-- Focus on **optimizing service efficiency** and **passenger experience**.  
-- Uses **boarding, alighting, and travel time data** from actual operations.  
+- Each agent represents a vehicle operating in a shared network  
+- Agents interact with demand, system constraints, and each other  
+- The environment captures realistic operational challenges  
+
+It is designed for:
+- **Data-driven experimentation**  
+- **Multi-agent coordination under constraints**  
+- **Multi-objective optimization research**  
 
 ---
 
@@ -54,11 +58,49 @@ Each bus (agent) can choose among three actions:
 
 ## 🎯 Reward Function
 
-The reward combines:
-- Passenger service quality (shorter waits, demand satisfaction).  
-- Operational efficiency (balanced occupancy, timely trips).  
-- Maintenance/fuel management (penalties for ignoring issues).  
-- Traffic flow & coordination (avoid idling or bus bunching).  
+A core feature of this project is flexible reward experimentation.
+
+### Supported approaches:
+- Single-objective baselines  
+- Weighted multi-objective rewards  
+- Vector-valued MORL rewards  
+- Custom reward decomposition  
+
+### Research focus:
+- Sensitivity to reward design  
+- Objective trade-offs  
+- Learning stability and convergence  
+- Policy interpretability  
+
+---
+
+---
+
+## 🎯 Multi-Objective Formulation
+
+The environment models multiple competing objectives:
+
+- **Passenger Service Quality**
+  - Reduce waiting times  
+  - Improve demand satisfaction  
+
+- **Operational Efficiency**
+  - Optimize travel time  
+  - Improve resource utilization  
+
+- **System Regularity**
+  - Maintain stable headways  
+  - Reduce vehicle clustering  
+
+- **Sustainability & Maintenance**
+  - Energy/fuel efficiency  
+  - Maintenance compliance  
+
+### Reward Modeling Options
+
+- Weighted scalarization  
+- Vector-valued rewards (true MORL)  
+- Custom reward compositions  
 
 This ensures agents balance **service quality, fleet efficiency, and sustainability**.
 
