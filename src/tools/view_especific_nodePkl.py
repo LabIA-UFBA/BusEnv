@@ -5,7 +5,7 @@ with open("src/training_observation/occupancy_rate.pkl", "rb") as f:
     occupancy_rate = pickle.load(f)
 
 # Node you want to search
-node_id = 44783675
+node_id = 44782849
 
 # Search in the dictionary
 if node_id in occupancy_rate:

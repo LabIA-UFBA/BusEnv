@@ -94,7 +94,7 @@ class RLlibSuntBus(MultiAgentEnv):
             agents_per_route=3, # Number of agents sharing the same route
             use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
-            num_agents=12,
+            num_agents=6,
             use_rain = False, # Need to pass to true when using rain
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
@@ -318,10 +318,10 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 400000},  # adjust as needed
+        "stop": {"timesteps_total": 10000},  # adjust as needed
         "checkpoint_freq": 0,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 22,     # adjust as needed
+        "num_workers": 0,     # adjust as needed
         "share_policy": "individual",
         "local_dir": "/mnt/ssd1/ray_results",
     }

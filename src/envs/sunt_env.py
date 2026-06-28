@@ -3,6 +3,7 @@ from pettingzoo import ParallelEnv
 import networkx as nx
 from gym import spaces
 import numpy as np
+import sys
 import random
 import pickle
 import gym.utils.seeding  # import seeding
@@ -35,6 +36,8 @@ class parallel_env(ParallelEnv):
         self.actions_amount = actions_amount
         self.max_steps = max_steps 
         self.render_mode = render_mode
+
+        np.set_printoptions(threshold=sys.maxsize)
 
         # --- Agents ---
         self._num_agents = num_agents
@@ -229,6 +232,7 @@ class parallel_env(ParallelEnv):
         self.uptime_normalized_mean = uptime_normalized or {}
 
         self.debug_quantum = False   # DEBUG MODE ON
+        self.debug = True   
 
 
 
@@ -286,6 +290,11 @@ class parallel_env(ParallelEnv):
         self.route_leader = {}  # will be updated dynamically in step()
         self.episode_step_counter = 0
 
+        self.episode_objectives = {
+            agent: []
+            for agent in self.agents
+        }
+
         # --- Move on to the next day if the previous one has ended ---
         print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
         print(f"📆 [ENV] Total days in simulation: {self.total_days}")
@@ -311,7 +320,7 @@ class parallel_env(ParallelEnv):
             print(f"⚠️ Error loading daily data: {e}. Using fallback averages.")
             self._use_fallbacks()
         
-        # --- Initialization of fixed routes (if they don't already exist) ---
+        # --- Initialization of fixed routes (if they dont already exist) ---
         if not hasattr(self, "fixed_agent_routes") or self.fixed_agent_routes is None:
             self.fixed_agent_routes = {}
             num_agents = len(self.agents)
@@ -324,14 +333,14 @@ class parallel_env(ParallelEnv):
                 if path_len <= 30:
                     return int(default_agents) # Antes era 2 
                 # >30 uses the user's default (ensures >=1)
-                return max(1, int(default_agents)) # DO JEITO QUE TA AQUI EU TO SEMPRE RETORNANDO POR ROTA O VALOR QUE EU SETO 
+                return max(1, int(default_agents)) # DO JEITO QUE TA AQUI EU TO SEMPRE RETORNANDO POR ROTA O VALOR QUE EU SETO POR ENQUANTO
 
             default_agents_per_route = getattr(self, "agents_per_route", 1)
 
             agent_routes_assignment = []
             agent_idx = 0
 
-            # CHANGE: dynamic allocation based on route length
+            # dynamic allocation based on route length
             for trip_id, path in routes:
                 if agent_idx >= num_agents:
                     break
@@ -380,7 +389,7 @@ class parallel_env(ParallelEnv):
 
             self.agent_states[agent] = {
                 "location": initial,
-                "occupancy": int(self.occupancy_rate.get(int(initial), 0.0)),
+                "occupancy": float(self.occupancy_rate.get(initial, 0.0)),
                 "uptime": float(self.uptime_normalized.get(initial, 1.0)),
                 "fuel": 100.0,
                 "maintenance_status": "ok",
@@ -390,6 +399,8 @@ class parallel_env(ParallelEnv):
                 "status": "active",
                 "going_forward": True,
             }
+            
+            print("self.agent_states[agent]: ", self.agent_states[agent])
 
             # --- Register initial position for coordination ---
             self.agent_positions[agent] = initial
@@ -625,11 +636,16 @@ class parallel_env(ParallelEnv):
 
                 # Update occupancy
                 prev_occ = state.get("occupancy", 0.0)
-                if int(curr_node) in self.occupancy_rate:
-                    expected_occ = self.occupancy_rate[int(curr_node)]
+                if curr_node in self.occupancy_rate: # We make a mix here, the occupation that we already had with the new one 
+                    expected_occ = self.occupancy_rate[curr_node] # Ex with alpha 0.5: prev_occ = 0.30, expected_occ = 0.90 -> occupancy = 0.5 * 0.30 + 0.5 * 0.90 = 0.60
                     alpha = 0.5
                     occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
                     occupancy = max(0.0, min(occupancy, 1.0))
+
+                    if np.random.rand() < 000.1 and self.debug:
+                        print("prev_occ: ", prev_occ)
+                        print("expected_occ: ", expected_occ)
+                        print("New Occupance based on the prev en the new: ", occupancy)
 
                     # <<< DEBUG >>> QUANTUM OCCUPANCY USAGE
                     if self.debug_quantum and self.episode_step_counter % 50 == 0:
@@ -645,13 +661,25 @@ class parallel_env(ParallelEnv):
                         )
 
                 else:
+                    if np.random.rand() < 000.1 and self.debug:
+                        print("ENTROU NO ELSE: ", prev_occ)
                     occupancy = prev_occ
 
+
                 state["occupancy"] = occupancy
-                # state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0)
-                travel_time_hors = travel_time / (12 * 3600)
-                state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
+                # state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
+                travel_time_hors = travel_time / (12 * 3600) 
+                old = state["uptime"] 
+                state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0) # O 12 aqui estou assumindo que 12 horas sem service center é o maximo que o agente consegue
                 state["fuel"] = max(state["fuel"] - travel_time / 300.0, 0.0)
+
+                if np.random.rand() < 0.01 and self.debug:
+                    print(
+                        f"[UPTIME MOVE] "
+                        f"old={old:.4f} "
+                        f"travel_h={travel_time_hors:.4f} "
+                        f"new={state['uptime']:.4f}"
+                    )
 
                 self.states[agent] = next_node
 
@@ -685,13 +713,13 @@ class parallel_env(ParallelEnv):
 
                 # --- identificar rota ---
                 route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
-                route_id = route_id[0] if route_id else "unknown"  # <<< NOVO >>>
+                route_id = route_id[0] if route_id else "unknown"  
 
                 # --- direção ---
-                direction = state.get("going_forward", True)  # <<< NOVO >>>
+                direction = state.get("going_forward", True)  
 
                 # --- chave correta ---
-                key = (route_id, next_node, direction)  # <<< NOVO >>>
+                key = (route_id, next_node, direction) 
 
                 # --- armazenamento ---
                 if key not in self.headways:
@@ -706,7 +734,7 @@ class parallel_env(ParallelEnv):
                     if self.agent_times[agent] - t <= MAX_HEADWAY_TIME
                 ]
 
-                if self.episode_step_counter % 50 == 0:  # DEBUG HADWAY
+                if self.episode_step_counter % 50 == 0 and self.debug:  # DEBUG HADWAY
                     print(
                         f"[HEADWAY DEBUG] key={key} | "
                         f"agent={agent} | "
@@ -714,7 +742,7 @@ class parallel_env(ParallelEnv):
                         f"n={len(self.headways[key])} | "
                         f"times={sorted(self.headways[key])}"
                     )
-                
+                """
                 reward = self.reward.getRewardHard( 
                     new_state=next_node,
                     previous_state=curr_node,
@@ -745,7 +773,26 @@ class parallel_env(ParallelEnv):
                     reward_type=self.reward_type,
                     last_rain_eff=self.last_rain_eff.get(agent, 0.0)
                 )
-                """
+
+                vector = self.reward.getVectorReward(
+                    new_state=next_node,
+                    previous_state=curr_node,
+                    action=action,
+                    target=route[-1],
+                    network=self.network,
+                    estimated_time=self.estimated_times[agent],
+                    expected_time=self.expected_times[agent],
+                    delay=0,
+                    agent_state=state,
+                    headways=self.headways[key],
+                    is_raining=is_raining,
+                    reward_type=self.reward_type,
+                    last_rain_eff=self.last_rain_eff.get(agent, 0.0)
+                )
+
+                self.episode_objectives[agent].append(vector)
+                # print("self.episode_objectives[agent]: ", self.episode_objectives[agent]) print(np.round(vector, 3))
+                
                 
                 self.last_rain_eff[agent] = self.reward._efficiency_component(
                     float(self.estimated_times[agent]),
@@ -965,8 +1012,40 @@ class parallel_env(ParallelEnv):
 
         if all_finished:
             print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
+            episode_vectors = []
             for a in self.possible_agents:
                 print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
+                
+                vectors = np.array(self.episode_objectives[a]) # I take the episode values ​​for the metrics
+                total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
+                mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent 
+
+                infos[a]["episodic_return_vector"] = total_objectives
+                infos[a]["episodic_mean_objectives"] = mean_objectives
+                infos[a]["status"] = "finished"
+                infos[a]["reason"] = "24h_limit"
+
+                episode_vectors.append(mean_objectives)
+
+                if self.debug:
+           
+                    print(f"\n{a}")
+
+                    print(f"Mean Objectives: {mean_objectives.round(3)}")
+
+                    print(f"Total Sun Objectives: {total_objectives.round(3)}")
+
+                    print(f"\n Valores brutos do Agente, vector: {vectors.round(3)}")
+            
+            episode_vectors = np.array(episode_vectors)
+
+            episode_mean = episode_vectors.mean(axis=0)
+            
+            if self.debug:
+                print("\n==============================")
+                print(f"Episode Mean Objectives: {episode_mean.round(3)}") # occupancy_score, uptime_score, sync_score and efficiency_score
+                print("==============================")
+            
             self.day_done = True
             self.agents_finished_previous_day = True
         else:
@@ -1453,10 +1532,12 @@ class DefaultReward(RewardBaseClass):
 
     def _occ_component(self, occupancy: float) -> float:
         """
-        Returns a value in [0, 1], where 0 = perfect in ideal range; 1 = far off.
+        Returns a value in [0, 1], where 0 = perfect in ideal range; 1 = far off
         Then we apply negative sign when composing the reward
         """
         min_occ, max_occ = self.occupancy_range
+        if np.random.rand() < 000.1:
+            print(f"occupancy = {occupancy:.3f}")
         if occupancy < min_occ:
             return min(1.0, (min_occ - occupancy) ** 2 / (min_occ ** 2 + 1e-8))
         if occupancy > max_occ:
@@ -1468,7 +1549,12 @@ class DefaultReward(RewardBaseClass):
         Measures regularity in [0, 1]: 1 = perfect (intervals very close to target),
         0 = very irregular (relative deviation >= max_sync_rel_std)
         """
-        if not headways or len(headways) < 3: # Estou passando todos os agentes e não os agentes na rota especifica
+        
+        if np.random.rand() < 000.1:
+            print(f"headways = {headways}")
+
+        if not headways or len(headways) < 2: # Estou passando todos os agentes e não os agentes na rota especifica
+            print("SYNC RETURN 0 -> poucos ônibus:", headways)
             return 0.0  # Not enough information to assess regularity
 
         headways = sorted(headways)  # ORDENAR
@@ -1496,6 +1582,17 @@ class DefaultReward(RewardBaseClass):
         rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8)) # rms erro absoluto (em segundos) é normalizado
 
         # Convert to "score" in [0,1], where 1 is good
+        print(
+            f"""
+            intervals = {intervals}
+
+            rms = {rms:.2f}
+
+            rel = {rel:.3f}
+
+            sync = {1-rel:.3f}
+            """
+            )
         return 1.0 - rel
 
     def _efficiency_component(self, estimated_time: float, expected_time: float) -> float:
@@ -1507,7 +1604,7 @@ class DefaultReward(RewardBaseClass):
         ratio = estimated_time / (expected_time + 1e-8)
         return float(np.clip(1.0 - ratio, 0.0, 1.0))
     
-    def getReward(
+    def getReward_OLD(
         self,
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
@@ -1638,7 +1735,275 @@ class DefaultReward(RewardBaseClass):
 
         return reward
 
+    def getReward(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None, is_raining=False, 
+        reward_type="normal", last_rain_eff=0.0 
+    ):
 
+        objectives = self.getObjectives(
+
+            new_state,
+            previous_state,
+            action,
+            target,
+            network,
+            estimated_time,
+            expected_time,
+            delay,
+            agent_state,
+            headways,
+            is_raining,
+            reward_type,
+            last_rain_eff
+
+        )
+
+        rain_bonus_reward = 0.0
+
+        eff_weight = self.reward_weights["energy_efficiency"]
+
+        if is_raining and reward_type == "bonus":
+
+            eff_weight *= 2.0
+
+        reward = self.scalarize(
+
+            objectives,
+
+            eff_weight,
+
+            rain_bonus_reward
+        )
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[EFF CHECK] "
+                f"rain={is_raining} | "
+                f"eff={objectives['efficiency_score']:.3f} | "
+                f"est={estimated_time:.1f} | "
+                f"exp={expected_time:.1f}"
+            )
+
+        if np.random.rand() < 0.002:
+            print(
+                f"[REWARD BREAKDOWN] "
+                f"occ={objectives['occupancy_score']:.3f} | "
+                f"uptime={objectives['uptime_score']:.3f} | "
+                f"sync={objectives['sync_score']:.3f} | "
+                f"eff={objectives['efficiency_score']:.3f} | "
+                f"rain={is_raining} | "
+                f"bonus={rain_bonus_reward:.3f} | "
+                f"final={reward:.3f}"
+            )
+
+
+        if np.random.rand() < 0.005:  # ~0.5% dos steps
+            print(
+                f"[REWARD DBG] "
+                f"occ={objectives['occupancy_score']:.3f} "
+                f"uptime={objectives['uptime_score']:.3f} "
+                f"sync={objectives['sync_score']:.3f} "
+                f"eff={objectives['efficiency_score']:.3f} "
+                f"weights={self.reward_weights} "
+                f"final={reward:.3f}"
+            )
+
+        return reward
+
+    # ===========================
+    # RECOVERING TRAINING OBJECTIVES 
+    # ===========================
+    def getObjectives(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None,
+        is_raining=False,
+        reward_type="normal",
+        last_rain_eff=0.0
+    ):
+        """
+        Calculates all objectives independently.
+
+        Nothing is scalarized here.
+        Nothing uses weights.
+
+        This method becomes the "heart" of the reward morl system
+        """
+
+        # Normalized components
+        occ_pen = 0.0
+        uptime = 0.0
+        sync = 0.0
+        eff = 0.0
+
+        if agent_state is not None:
+            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
+
+        sync = self._sync_component(headways or [])
+
+        # --- Base efficiency ---
+        eff = self._efficiency_component(float(estimated_time), float(expected_time))
+        
+        # --- Rain efficiency used only when rains ---
+        modified_eff = eff
+        rain_bonus_reward = 0.0
+
+        # ======================================================
+        # 🌧️ RAIN LOGIC (can be turned OFF with reward_type="normal")
+        # ======================================================
+        if is_raining and reward_type != "normal":
+
+            # -------- Penalization --------
+            if reward_type == "penalization":
+                rain_strength = 0.2 # Penalization intensity Lamda on article 
+                # modified_eff = eff * rain_strength * (1.0 - eff) # If it's raining, efficiency is penalized more
+                modified_eff = eff * (1.0 - rain_strength * (1.0 - eff))
+
+            # -------- Bonus on efficiency --------
+            elif reward_type == "bonus":
+                #rain_bonus_eff = 0.2 # Bonus intensity
+                #modified_eff = np.clip(eff + rain_bonus_eff * eff, 0.0, 1.0) # If it's raining, efficiency is rewarded more
+                modified_eff = eff
+
+           # -------- Relative improvement bonus (reward-level) --------
+            # rain_bonus_reward = 0.2 if eff > last_rain_eff else 0.0 INICIALMENTE VAMOS USAR SO O BONUS OU PENALIZAÇÃO
+
+        modified_eff = float(np.clip(modified_eff, 0.0, 1.0))
+
+        # transforma penalidade em score
+
+        occ_score = 1.0 - occ_pen # ESTAMOS INVERTENDO A PENALIDADE PARA QUE TUDO SEJA O MESMO SENTIDO, QUANTO MENOR PIOR 
+
+        assert 0 <= occ_score <= 1
+        assert 0 <= uptime <= 1
+        assert 0 <= sync <= 1
+        assert 0 <= modified_eff <= 1
+
+        return {
+
+                "occupancy_score": occ_score,
+
+                "uptime_score": uptime,
+
+                "sync_score": sync,
+
+                "efficiency_score": modified_eff
+
+        }
+    
+
+    # ===========================
+    # NOVO MÉTODO
+    # ===========================
+    def getVectorReward(
+        self,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None,
+        headways=None,
+        is_raining=False,
+        reward_type="normal",
+        last_rain_eff=0.0
+    ):
+
+        obj = self.getObjectives(
+
+            new_state,
+            previous_state,
+            action,
+            target,
+            network,
+            estimated_time,
+            expected_time,
+            delay,
+            agent_state,
+            headways,
+            is_raining,
+            reward_type,
+            last_rain_eff
+
+        )
+
+        return np.array([
+
+            obj["occupancy_score"],
+
+            obj["uptime_score"],
+
+            obj["sync_score"],
+
+            obj["efficiency_score"]
+
+        ])
+
+    def scalarize(
+        self,
+        objectives,
+        eff_weight,
+        rain_bonus_reward=0.0
+    ):
+
+        w = self.reward_weights
+
+        reward = (
+
+            w["occ_penalty"] *
+            objectives["occupancy_score"]
+
+            +
+
+            w["uptime_bonus"] *
+            objectives["uptime_score"]
+
+            +
+
+            w["sync_score"] *
+            objectives["sync_score"]
+
+            +
+
+            eff_weight *
+            objectives["efficiency_score"]
+
+            +
+
+            rain_bonus_reward
+
+        )
+
+        weight_sum = (
+
+            w["occ_penalty"]
+
+            +
+
+            w["uptime_bonus"]
+
+            +
+
+            w["sync_score"]
+
+            +
+
+            eff_weight
+
+        )
+
+        if weight_sum > 0:
+
+            reward /= weight_sum
+
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        return reward
+        
+
+    # METODOS MORL DE RECOMPENSA LINEAR 
     def getRewardHard(
         self,
         new_state, previous_state, action, target, network,

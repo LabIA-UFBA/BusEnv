@@ -12,10 +12,10 @@ try:
     
     # Dependendo do tipo de dado, você pode visualizá-lo de diferentes formas:
     if isinstance(data, dict):
-        print("É um dicionário. Primeiros 5 itens:")
+        print("É um dicionário. Primeiros 10 itens:")
         for i, (key, value) in enumerate(data.items()):
             print(f"  {key}: {value}")
-            if i >= 5: # Para não imprimir tudo se for muito grande
+            if i >= 10: # Para não imprimir tudo se for muito grande
                 break
         if len(data) > 5:
             print(f"  ...e mais {len(data) - 5} itens.")
