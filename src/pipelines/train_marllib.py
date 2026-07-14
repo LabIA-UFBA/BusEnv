@@ -321,7 +321,7 @@ def main():
         "stop": {"timesteps_total": 130000},  # adjust as needed
         "checkpoint_freq": 5,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 0,     # adjust as needed to gain velocity in the training, 20 is a good point
+        "num_workers": 20,     # adjust as needed to gain velocity in the training, 20 is a good point
         "share_policy": "individual",
         "local_dir": "/mnt/ssd1/ray_results",
     }

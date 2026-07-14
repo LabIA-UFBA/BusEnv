@@ -37,7 +37,7 @@ class parallel_env(ParallelEnv):
         self.max_steps = max_steps 
         self.render_mode = render_mode
 
-        np.set_printoptions(threshold=sys.maxsize)
+        # np.set_printoptions(threshold=sys.maxsize)
 
         # --- Agents ---
         self._num_agents = num_agents

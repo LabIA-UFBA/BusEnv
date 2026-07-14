@@ -64,3 +64,12 @@ Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run7.log
 🏁 Todas as 1 rodadas foram executadas com sucesso!
 📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
 🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run1.log
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run1.log
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run1.log
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
