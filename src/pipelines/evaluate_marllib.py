@@ -341,6 +341,7 @@ def main():
     # Train
     with tracker_ctx:
         algo.fit(env=env_tuple, model=model, stop=stop_conditions, **final_config)
+        algo.render(env=env_tuple, model=model, local_mode=True, restore_path='path_to_model')
 
 if __name__ == "__main__":
     main()

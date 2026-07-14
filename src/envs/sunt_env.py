@@ -187,6 +187,7 @@ class parallel_env(ParallelEnv):
 
         # --- Logging and metrics ---
         self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
+        self.metrics_file_objectives = "episode_metrics.csv"
         self._printed_day_end = set()
         self.last_logged_day = -1
         self.episode_step_counter = 0  # Counts total environment steps per episode
@@ -224,7 +225,21 @@ class parallel_env(ParallelEnv):
             with open(self.metrics_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["episode", "env_steps", "mean_reward", "total_reward", "fairness"])
+
+        if not os.path.exists(self.metrics_file_objectives):
+            with open(self.metrics_file_objectives, "w", newline="") as f:
+                writer = csv.writer(f)
+
+                writer.writerow([
+                    "episode",
+                    "occupancy",
+                    "uptime",
+                    "sync",
+                    "efficiency"
+                ])
         
+        self.episode_counter = 0 # Episode Count
+
         # --- Fallback averages for missing daily data ---
         self.avg_travel_time_AB_mean = avg_travel_time_AB or {} 
         self.future_demand_at_B_mean = future_demand_at_B or {} 
@@ -631,7 +646,7 @@ class parallel_env(ParallelEnv):
                 travel_time_raw = self.avg_travel_time_AB.get((curr_node, next_node), self.default_travel_time)
                 travel_time = min(travel_time_raw, TRAVEL_TIME_CAP)
 
-                self.agent_times[agent] += travel_time
+                self.agent_times[agent] += travel_time # Avançando o relogio do agente baseado no tempo da viagem
                 self.estimated_times[agent] += travel_time
 
                 # Update occupancy
@@ -718,7 +733,7 @@ class parallel_env(ParallelEnv):
                 # --- direção ---
                 direction = state.get("going_forward", True)  
 
-                # --- chave correta ---
+                # --- Montando a chave correta ---
                 key = (route_id, next_node, direction) 
 
                 # --- armazenamento ---
@@ -728,10 +743,10 @@ class parallel_env(ParallelEnv):
                 self.headways[key].append(self.agent_times[agent])
 
                 # --- janela temporal ---
-                MAX_HEADWAY_TIME = 1800 
+                MAX_HEADWAY_TIME = 1800 # Limpamos a lista após 30 minutos (1800)
                 self.headways[key] = [
                     t for t in self.headways[key]
-                    if self.agent_times[agent] - t <= MAX_HEADWAY_TIME
+                    if self.agent_times[agent] - t <= MAX_HEADWAY_TIME # O que entra na lista de headways é o horário absoluto de chegada naquele ponto pro agente 
                 ]
 
                 if self.episode_step_counter % 50 == 0 and self.debug:  # DEBUG HADWAY
@@ -862,7 +877,6 @@ class parallel_env(ParallelEnv):
                         state["fuel"] = max(state["fuel"] - total_fuel_cost, 0.0)
                         # total_travel_time_hors = total_travel_time / (12 * 3600)
                         state["uptime"] = max(state["uptime"] - total_travel_time / (12 * 3600), 0.0)
-                        # state["uptime"] = max(1.0, state["uptime"] / (total_travel_time + 1e-8))
                         state["fuel"] = 100.0
                         state["uptime"] = min(state["uptime"] + 0.3, 1.0) # state["uptime"] = 1.0
                         state["maintenance_status"] = "ok"
@@ -1040,6 +1054,26 @@ class parallel_env(ParallelEnv):
             episode_vectors = np.array(episode_vectors)
 
             episode_mean = episode_vectors.mean(axis=0)
+
+            self.episode_counter += 1 # Counting the episodes of the training
+
+            with open(self.metrics_file_objectives, "a", newline="") as f:
+                print(
+                    "[CSV]",
+                    "PID =", os.getpid(),
+                    "PATH =", os.path.abspath(self.metrics_file_objectives),
+                    "EP =", self.episode_counter,
+                )
+                
+                
+                writer = csv.writer(f)
+                writer.writerow([
+                    self.episode_counter,
+                    float(episode_mean[0]),
+                    float(episode_mean[1]),
+                    float(episode_mean[2]),
+                    float(episode_mean[3]),
+                ])
             
             if self.debug:
                 print("\n==============================")
@@ -1536,8 +1570,9 @@ class DefaultReward(RewardBaseClass):
         Then we apply negative sign when composing the reward
         """
         min_occ, max_occ = self.occupancy_range
-        if np.random.rand() < 000.1:
+        if np.random.rand() < 000.1: # DEBUG
             print(f"occupancy = {occupancy:.3f}")
+        
         if occupancy < min_occ:
             return min(1.0, (min_occ - occupancy) ** 2 / (min_occ ** 2 + 1e-8))
         if occupancy > max_occ:
@@ -1573,7 +1608,7 @@ class DefaultReward(RewardBaseClass):
             return 0.0
 
         # Desvio RMS (Root Mean Square) dos intervalos em relação ao valor ideal (600 (10 minutos))
-        # Para cada intervalo real, eu to medindo o quanto ele errou em relação ao desejado 
+        # Para cada intervalo real, eu to medindo o quanto ele errou em relação ao desejado 10 minutos 
         diffs = [(x - self.target_headway) for x in intervals]
         mean_sq = sum(d * d for d in diffs) / len(diffs)
         rms = mean_sq ** 0.5  # in seconds
@@ -1582,17 +1617,6 @@ class DefaultReward(RewardBaseClass):
         rel = min(1.0, rms / (self.max_sync_rel_std * self.target_headway + 1e-8)) # rms erro absoluto (em segundos) é normalizado
 
         # Convert to "score" in [0,1], where 1 is good
-        print(
-            f"""
-            intervals = {intervals}
-
-            rms = {rms:.2f}
-
-            rel = {rel:.3f}
-
-            sync = {1-rel:.3f}
-            """
-            )
         return 1.0 - rel
 
     def _efficiency_component(self, estimated_time: float, expected_time: float) -> float:
