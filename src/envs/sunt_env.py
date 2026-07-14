@@ -247,7 +247,7 @@ class parallel_env(ParallelEnv):
         self.uptime_normalized_mean = uptime_normalized or {}
 
         self.debug_quantum = False   # DEBUG MODE ON
-        self.debug = True   
+        self.debug = False   
 
 
 
@@ -682,7 +682,7 @@ class parallel_env(ParallelEnv):
 
 
                 state["occupancy"] = occupancy
-                # state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
+               
                 travel_time_hors = travel_time / (12 * 3600) 
                 old = state["uptime"] 
                 state["uptime"] = max(state["uptime"] - travel_time / (12 * 3600), 0.0) # O 12 aqui estou assumindo que 12 horas sem service center é o maximo que o agente consegue
@@ -1584,9 +1584,6 @@ class DefaultReward(RewardBaseClass):
         Measures regularity in [0, 1]: 1 = perfect (intervals very close to target),
         0 = very irregular (relative deviation >= max_sync_rel_std)
         """
-        
-        if np.random.rand() < 000.1:
-            print(f"headways = {headways}")
 
         if not headways or len(headways) < 2: # Estou passando todos os agentes e não os agentes na rota especifica
             print("SYNC RETURN 0 -> poucos ônibus:", headways)
@@ -1596,12 +1593,7 @@ class DefaultReward(RewardBaseClass):
         
         # intervals in seconds
         intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)]
-        # <<< DEBUG AQUI >>>
-        if len(intervals) > 0 and random.random() < 0.05:  # amostragem
-            print(
-                f"[SYNC DEBUG] intervals={intervals} | "
-                f"target={self.target_headway}"
-            )
+        
         # remove noise/invalid intervals não existe “intervalo negativo” entre dois veículos então é removido se tiver
         intervals = [x for x in intervals if x > 0]
         if len(intervals) < 2:
