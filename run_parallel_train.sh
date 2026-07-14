@@ -8,6 +8,7 @@
 #   ./logs        (será criado se não existir)
 # ---------------------------------------------------------
 
+# Modify if necessary before running; if you do not wish to select an output folder, you can comment out this line.
 export RAY_TMPDIR=/mnt/ssd1/ray_tmp
 export TMPDIR=/mnt/ssd1/tmp
 
@@ -47,7 +48,7 @@ algos=("ippo")
 # 🔄 Número de execuções por algoritmo (edite à vontade) 
 runs_per_algo=1
 
-# Pastas de saída
+# Pastas de saída ALTERAR CASO NECESSARIO ANTES DE RODAR
 LOG_DIR="${ROOT_DIR}/logs"
 CC_OUTDIR="${ROOT_DIR}/codecarbon"
 
