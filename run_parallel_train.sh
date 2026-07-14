@@ -8,6 +8,10 @@
 #   ./logs        (será criado se não existir)
 # ---------------------------------------------------------
 
+# Modify if necessary before running; if you do not wish to select an output folder, you can comment out this line.
+export RAY_TMPDIR=/mnt/ssd1/ray_tmp
+export TMPDIR=/mnt/ssd1/tmp
+
 # Descobre a raiz do projeto (pasta onde está este script)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -18,7 +22,7 @@ cd MARLlib
 export PYTHONPATH=$(pwd):$PYTHONPATH
 cd ..
 
-# Caminho do trainer parametrizado
+#Caminho do trainer parametrizado
 TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 
 # ✅ Lista com TODOS os algoritmos (edite à vontade)
@@ -27,9 +31,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=( "itrpo" "ippo"
-       "maa2c" "coma" "matrpo" "mappo"
-       "hatrpo" "happo")
+algos=("ippo")
 
 # Funcionaram 100%
 # IA2C 
@@ -43,10 +45,10 @@ algos=( "itrpo" "ippo"
 # Não está na lib
 # "ipg"
 
-# 🔄 Número de execuções por algoritmo (edite à vontade)
-runs_per_algo=50
+# 🔄 Número de execuções por algoritmo (edite à vontade) 
+runs_per_algo=1
 
-# Pastas de saída
+# Pastas de saída ALTERAR CASO NECESSARIO ANTES DE RODAR
 LOG_DIR="${ROOT_DIR}/logs"
 CC_OUTDIR="${ROOT_DIR}/codecarbon"
 
@@ -61,20 +63,27 @@ for run in $(seq 1 "${runs_per_algo}"); do
   
   # Executa todos os algoritmos em paralelo nesta rodada
   for algo in "${algos[@]}"; do
-    run_id="run${run}"
-    log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-    echo "Lançando: ${algo} (Run ${run}) -> ${log_file}"
+      # Encontrar o próximo número disponível de log para este algoritmo
+      next_run=1
+      while [[ -f "${LOG_DIR}/${algo}_run${next_run}.log" ]]; do
+          next_run=$((next_run + 1))
+      done
 
-    nohup python "${TRAIN_SCRIPT}" \
-      --algo "${algo}" \
-      --cc-run-id "${algo}-${run_id}" \
-      --cc-output-dir "${CC_OUTDIR}" \
-      > "${log_file}" 2>&1 &
+      run_id="run${next_run}"
+      log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-    # Pequeno atraso para não iniciar tudo no mesmo instante
-    sleep 2
+      echo "Lançando: ${algo} -> ${log_file}"
+
+      nohup python "${TRAIN_SCRIPT}" \
+        --algo "${algo}" \
+        --cc-run-id "${algo}-${run_id}" \
+        --cc-output-dir "${CC_OUTDIR}" \
+        > "${log_file}" 2>&1 &
+
+      sleep 2
   done
+
 
   # Espera todos os algoritmos desta rodada terminarem antes da próxima
   echo "⏳ Aguardando finalização da rodada ${run}..."

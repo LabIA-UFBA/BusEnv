@@ -91,14 +91,19 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env = parallel_env(
             network=G,
             actions_amount=3,
-            max_steps=1000,
-            num_agents=5,
+            agents_per_route=5, # Number of agents sharing the same route
+            use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
+            max_steps=10000,
+            num_agents=20,
+            use_rain = False, # Need to pass to true when using rain
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
             occupancy_rate=occupancy_rate,
             uptime_normalized=uptime_normalized,
             real_routes=real_routes,
             route_metadata=route_metadata,
+            occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm"
+            reward_raining_type = "normal" # normal | penalization | bonus
         )
 
         # Supersuit wrappers
@@ -203,7 +208,7 @@ class RLlibSuntBus(MultiAgentEnv):
         infos = {a: info[a] for a in self.agents}
 
         # Mantém a lista de agentes estável até o próximo reset (não remova no meio do episódio)
-        # if dones["__all__"]:  # nada a fazer aqui; reset tratará na próxima chamada
+        # if dones["__all__"]: # nada a fazer aqui; reset tratará na próxima chamada
 
         return obs, rewards, dones, infos
 
@@ -267,6 +272,14 @@ DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20, "sgd_minibatch_size": 128}
 # Main entrypoint
 # ------------------------------
 def main():
+    
+    import os
+    os.environ["RAY_TMPDIR"] = "/mnt/ssd1/ray_tmp"
+    os.environ["TMPDIR"] = "/mnt/ssd1/tmp"
+
+    os.makedirs("/mnt/ssd1/ray_tmp", exist_ok=True)
+    os.makedirs("/mnt/ssd1/tmp", exist_ok=True)
+
     parser = argparse.ArgumentParser(description="Train MARLlib algorithms on SUNT Bus env")
     parser.add_argument(
         "--algo",
@@ -305,14 +318,13 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 400000},  # your requested 400k
-        "checkpoint_freq": 200,
+        "stop": {"timesteps_total": 130000},  # adjust as needed
+        "checkpoint_freq": 5,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 2,
+        "num_workers": 0,     # adjust as needed to gain velocity in the training, 20 is a good point
         "share_policy": "individual",
+        "local_dir": "/mnt/ssd1/ray_results",
     }
-
-
 
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
