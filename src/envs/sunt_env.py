@@ -12,6 +12,7 @@ import csv
 import os
 import pandas as pd
 from collections import defaultdict
+import fcntl
 
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human", "rgb_array"], "name": "graph_exploration_v0"}
@@ -29,7 +30,8 @@ class parallel_env(ParallelEnv):
                 use_only_mean_data=None, stopClass=None, rewardClass=None, initial_nodes=None, target_nodes=None,
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
-                real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal"):  
+                real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal",
+                metrics_file_objectives=None):  
 
         # --- Basic configuration ---
         self.network = network
@@ -37,7 +39,7 @@ class parallel_env(ParallelEnv):
         self.max_steps = max_steps 
         self.render_mode = render_mode
 
-        np.set_printoptions(threshold=sys.maxsize)
+        # np.set_printoptions(threshold=sys.maxsize)
 
         # --- Agents ---
         self._num_agents = num_agents
@@ -48,6 +50,7 @@ class parallel_env(ParallelEnv):
         # --- Stop/Reward classes ---
         self.stop = DefaultStopClass() if stopClass is None else stopClass
         self.reward = DefaultReward() if rewardClass is None else rewardClass
+        self.reward.env = self
 
         # --- Node index mapping ---
         self.node_to_idx = {str(n): i for i, n in enumerate(self.network.nodes)}  
@@ -139,6 +142,7 @@ class parallel_env(ParallelEnv):
 
         # --- Daily Data Control ---
         self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
+        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily_may"  # Path to daily data ONLY USING MAY
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -148,11 +152,21 @@ class parallel_env(ParallelEnv):
         self.total_days = len(self.daily_files)
         print(f"[DAILY DATA] {self.total_days} days detected for training.")
 
-        self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm"
+        self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm" | "timesfm_ft" | "timesfm" | "naive"
 
         self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
 
+        self.prediction_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/prediction") # Prediction data path loading
+
         self.quantum_routes = [
+            "20001_310_1",
+            "20001_310_2",
+            "20002_1320_1",
+            "20002_1320_10",
+            "20002_1367_5",
+        ]
+
+        self.prediction_routes = [
             "20001_310_1",
             "20001_310_2",
             "20002_1320_1",
@@ -187,7 +201,7 @@ class parallel_env(ParallelEnv):
 
         # --- Logging and metrics ---
         self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
-        self.metrics_file_objectives = "episode_metrics.csv"
+        self.metrics_file_objectives = metrics_file_objectives or "/mnt/ssd1/wesley/BusEnv/metrics/episode_metrics.csv"
         self._printed_day_end = set()
         self.last_logged_day = -1
         self.episode_step_counter = 0  # Counts total environment steps per episode
@@ -225,7 +239,8 @@ class parallel_env(ParallelEnv):
             with open(self.metrics_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["episode", "env_steps", "mean_reward", "total_reward", "fairness"])
-
+        
+        os.makedirs(os.path.dirname(self.metrics_file_objectives), exist_ok=True)
         if not os.path.exists(self.metrics_file_objectives):
             with open(self.metrics_file_objectives, "w", newline="") as f:
                 writer = csv.writer(f)
@@ -235,7 +250,8 @@ class parallel_env(ParallelEnv):
                     "occupancy",
                     "uptime",
                     "sync",
-                    "efficiency"
+                    "efficiency",
+                    "Occupancy Percentage"
                 ])
         
         self.episode_counter = 0 # Episode Count
@@ -245,6 +261,15 @@ class parallel_env(ParallelEnv):
         self.future_demand_at_B_mean = future_demand_at_B or {} 
         self.occupancy_rate_mean = occupancy_rate or {}
         self.uptime_normalized_mean = uptime_normalized or {}
+
+        # --- Manual selection of routes you can change for the ones that you want to use--- 
+        self.manual_route_groups = {
+            "20001_310_1":  ["agent_0", "agent_1", "agent_2", "agent_3", "agent_4"],
+            "20001_310_2":  ["agent_5", "agent_6", "agent_7", "agent_8", "agent_9"],
+            "20002_1320_1":  ["agent_10", "agent_11", "agent_12", "agent_13", "agent_14"],
+            "20002_1320_10":  ["agent_15", "agent_16", "agent_17", "agent_18", "agent_19"],
+            "20002_1367_5":  ["agent_20", "agent_21", "agent_22", "agent_23", "agent_24"],
+        }
 
         self.debug_quantum = False   # DEBUG MODE ON
         self.debug = True   
@@ -310,6 +335,9 @@ class parallel_env(ParallelEnv):
             for agent in self.agents
         }
 
+        self.episode_occupancy_values = {a: [] for a in self.possible_agents}
+        self.episode_occupancy_ideal_flags = {a: [] for a in self.possible_agents}
+
         # --- Move on to the next day if the previous one has ended ---
         print(f"📅 [ENV] Current day: {self.current_day_index + 1}/{self.total_days}")
         print(f"📆 [ENV] Total days in simulation: {self.total_days}")
@@ -341,6 +369,36 @@ class parallel_env(ParallelEnv):
             num_agents = len(self.agents)
             routes = list(self.real_routes.items())
 
+            manual_route_groups = getattr(self, "manual_route_groups", {}) or {}
+
+            manually_assigned_agents = set()
+            used_trip_ids = set()
+
+            for trip_id, agent_list in manual_route_groups.items():
+                if trip_id not in self.real_routes:
+                    print(f"[ROUTE MANUAL] AVISO: trip_id '{trip_id}' não existe em real routes, ignorando.")
+                    continue
+                
+                path = self.real_routes[trip_id]
+
+                for agent in agent_list:
+                    if agent not in self.agents:
+                        print(f"[ROUTE MANUAL] AVISO: agente '{agent}' não existe em self.agents, ignorando.")
+                        continue
+                    self.fixed_agent_routes[agent] = path
+                    manually_assigned_agents.add(agent)
+                
+                used_trip_ids.add(trip_id)
+                route_preview = " -> ".join(str(n) for n in path)
+                print(
+                    f"[ROUTE MANUAL] trip={trip_id} | len={len(path)} | "
+                    f"agents={', '.join(agent_list)} | path={route_preview}"
+                )
+            
+            remaining_agents = [a for a in self.agents if a not in manually_assigned_agents]
+
+            remaining_routes = [(tid, p) for tid, p in routes if tid not in used_trip_ids]
+
             # CHANGE: function to decide number of agents per route (based on length)
             def _agents_for_path(path_len: int, default_agents: int) -> int:
                 if path_len < 15:
@@ -354,27 +412,31 @@ class parallel_env(ParallelEnv):
 
             agent_routes_assignment = []
             agent_idx = 0
+            num_remaining_agents = len(remaining_agents)
 
             # dynamic allocation based on route length
-            for trip_id, path in routes:
-                if agent_idx >= num_agents:
+            for trip_id, path in remaining_routes:
+                if agent_idx >= num_remaining_agents:
                     break
 
                 k = _agents_for_path(len(path), default_agents_per_route)
                 # does not exceed the total remaining agents
-                k = min(k, num_agents - agent_idx)
+                k = min(k, num_remaining_agents - agent_idx)
                 if k <= 0:
                     break
 
-                assigned_agents = self.agents[agent_idx:agent_idx + k]
+                assigned_agents = remaining_agents[agent_idx:agent_idx + k]
                 agent_routes_assignment.append((trip_id, path, assigned_agents))
 
                 for agent in assigned_agents:
                     self.fixed_agent_routes[agent] = path
 
                 # DEBUG: show decision per route
-                route_preview = " → ".join(str(n) for n in path[:5]) + (" → ..." if len(path) > 5 else "")
-                print(f"[ROUTE SPLIT] trip={trip_id} | len={len(path)} | assigned={k} | agents={', '.join(assigned_agents)} | path={route_preview}")
+                route_preview = " → ".join(str(n) for n in path)
+                print(
+                    f"[ROUTE SPLIT] trip={trip_id} | len={len(path)} | assigned={k} | "
+                    f"agents={', '.join(assigned_agents)} | path={route_preview}"
+                )
 
                 agent_idx += k
 
@@ -471,7 +533,7 @@ class parallel_env(ParallelEnv):
                 self.agent_times[agent] / (24 * 60 * 60),
                 self.agent_states[agent]["occupancy"],
                 normalized_travel_time,
-                self.future_demand_at_B.get(next_node, 0.0),
+                self.future_demand_at_B.get(str(next_node), 0.0),
                 self.uptime_normalized.get(agent, 1.0),
                 1.0 if self.agent_states[agent]["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(initial)],
@@ -651,35 +713,87 @@ class parallel_env(ParallelEnv):
 
                 # Update occupancy
                 prev_occ = state.get("occupancy", 0.0)
+                ALIGHTING_RATE = 0.20 # How many people get out of the bus, fraction of passengers that leave the bus at each stop
                 if curr_node in self.occupancy_rate: # We make a mix here, the occupation that we already had with the new one 
-                    expected_occ = self.occupancy_rate[curr_node] # Ex with alpha 0.5: prev_occ = 0.30, expected_occ = 0.90 -> occupancy = 0.5 * 0.30 + 0.5 * 0.90 = 0.60
-                    alpha = 0.5
-                    occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
-                    occupancy = max(0.0, min(occupancy, 1.0))
+                    # =====================================================
+                    # Prediction-based occupancy (Quantum / TimesFM / etc.)
+                    # =====================================================
+                    if self.occupancy_source != "real":
 
-                    if np.random.rand() < 000.1 and self.debug:
-                        print("prev_occ: ", prev_occ)
-                        print("expected_occ: ", expected_occ)
-                        print("New Occupance based on the prev en the new: ", occupancy)
+                        occupancy = self.occupancy_rate[curr_node]
+                        occupancy = max(0.0, min(occupancy, 1.0))
 
-                    # <<< DEBUG >>> QUANTUM OCCUPANCY USAGE
-                    if self.debug_quantum and self.episode_step_counter % 50 == 0:
-                        print(
-                            f"🧪 [Q-OCC USED] day={self.current_day_index} | "
-                            f"step={self.episode_step_counter} | "
-                            f"agent={agent} | "
-                            f"node={curr_node} | "  
-                            f"prev={prev_occ:.4f} | "
-                            f"quantum_raw={expected_occ:.4f} | "
-                            f"used_clipped={occupancy:.4f} | "
-                            f"source={self.occupancy_source}"
-                        )
+                        if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                            print(
+                                f"🧪 [PRED-OCC USED] "
+                                f"day={self.current_day_index} | "
+                                f"step={self.episode_step_counter} | "
+                                f"agent={agent} | "
+                                f"node={curr_node} | "
+                                f"pred_occ={occupancy:.4f} | "
+                                f"source={self.occupancy_source}"
+                            )
+
+                    # =====================================================
+                    # Real occupancy (cumulative model)
+                    # =====================================================
+                    else:
+                        # ========= OLD IMPLEMENTATION =========
+                        expected_occ = self.occupancy_rate[curr_node] # Ex with alpha 0.5: prev_occ = 0.30, expected_occ = 0.90 -> occupancy = 0.5 * 0.30 + 0.5 * 0.90 = 0.60
+                        alpha = 0.5
+                        occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
+                        occupancy = max(0.0, min(occupancy, 1.0)) 
+                            
+                        # ========= NOVA IDEIA PRA BOARDING ========= 
+
+                        # Boarding rate at the current stop (0.0 - 1.0 of bus capacity)
+                        #boarding_rate = self.occupancy_rate[curr_node]
+
+                        # Passengers leave the bus
+                        #occ_after_alighting = prev_occ * (1.0 - ALIGHTING_RATE)
+
+                        # New passengers board the bus
+                        #occupancy = min(occ_after_alighting + boarding_rate, 1.0)
+                        #occupancy = max(0.0, occupancy)
+
+                        if np.random.rand() < 0.1 and self.debug:
+                            print(
+                                f"[OCC CUMULATIVE] "
+                                f"prev={prev_occ:.3f} | "
+                                #f"boarding={boarding_rate:.3f} | "
+                                #f"after_alighting={occ_after_alighting:.3f} | "
+                                f"new={occupancy:.3f}"
+                            )
+
+                        if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                            print(
+                                f"🧪 [REAL-OCC USED] "
+                                f"day={self.current_day_index} | "
+                                f"step={self.episode_step_counter} | "
+                                f"agent={agent} | "
+                                f"node={curr_node} | "
+                                f"prev={prev_occ:.4f} | "
+                                #f"boarding={boarding_rate:.4f} | "
+                                #f"after_alighting={occ_after_alighting:.4f} | "
+                                f"used={occupancy:.4f}"
+                            )
 
                 else:
-                    if np.random.rand() < 000.1 and self.debug:
-                        print("ENTROU NO ELSE: ", prev_occ)
-                    occupancy = prev_occ
+                    # No boarding information available for this stop
 
+                    if self.occupancy_source != "real":
+                        occupancy = prev_occ
+                    else:
+                        occupancy = prev_occ 
+                        # occupancy = prev_occ * (1.0 - ALIGHTING_RATE)
+                        # occupancy = max(0.0, occupancy)
+
+                    if np.random.rand() < 0.1 and self.debug:
+                        print(
+                            f"[OCC NO DATA] "
+                            f"prev={prev_occ:.3f} | "
+                            f"new={occupancy:.3f}"
+                        )
 
                 state["occupancy"] = occupancy
                 # state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
@@ -774,6 +888,7 @@ class parallel_env(ParallelEnv):
                 """
                 # CHAMADA PADRÃO COM O RAIN (CHUVA)
                 reward = self.reward.getReward( 
+                    agent=agent,
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -790,6 +905,7 @@ class parallel_env(ParallelEnv):
                 )
 
                 vector = self.reward.getVectorReward(
+                    agent=agent,
                     new_state=next_node,
                     previous_state=curr_node,
                     action=action,
@@ -979,7 +1095,7 @@ class parallel_env(ParallelEnv):
                 self.agent_times[agent] / (24 * 60 * 60),
                 state["occupancy"],
                 normalized_travel_time,
-                self.future_demand_at_B.get(next_node, 0.0),
+                self.future_demand_at_B.get(str(next_node), 0.0),
                 state["uptime"],
                 1.0 if state["maintenance_status"] == "ok" else 0.0,
                 self.node_to_idx[str(curr_node)],
@@ -1027,15 +1143,22 @@ class parallel_env(ParallelEnv):
         if all_finished:
             print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
             episode_vectors = []
+            pct_ideal_occupancy_per_agent = []
             for a in self.possible_agents:
                 print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
                 
                 vectors = np.array(self.episode_objectives[a]) # I take the episode values ​​for the metrics
                 total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
-                mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent 
+                mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent
+
+                # NOVO: % of the steps that this agent spent within the ideal occupancy
+                occ_flags = np.array(self.episode_occupancy_ideal_flags[a])
+                pct_ideal_occupancy = float(occ_flags.mean() * 100) if len(occ_flags) > 0 else 0.0
+                pct_ideal_occupancy_per_agent.append(pct_ideal_occupancy) 
 
                 infos[a]["episodic_return_vector"] = total_objectives
                 infos[a]["episodic_mean_objectives"] = mean_objectives
+                infos[a]["pct_ideal_occupancy"] = pct_ideal_occupancy 
                 infos[a]["status"] = "finished"
                 infos[a]["reason"] = "24h_limit"
 
@@ -1049,35 +1172,50 @@ class parallel_env(ParallelEnv):
 
                     print(f"Total Sun Objectives: {total_objectives.round(3)}")
 
+                    print(f"% Ocupação Ideal: {pct_ideal_occupancy:.1f}%")
+
                     print(f"\n Valores brutos do Agente, vector: {vectors.round(3)}")
             
             episode_vectors = np.array(episode_vectors)
 
             episode_mean = episode_vectors.mean(axis=0)
 
+            # Overall ideal daily occupancy percentage, averaged across all agents
+
+            pct_ideal_occupancy_day = (
+                float(np.mean(pct_ideal_occupancy_per_agent))
+                if pct_ideal_occupancy_per_agent else 0.0
+            )
+
             self.episode_counter += 1 # Counting the episodes of the training
 
             with open(self.metrics_file_objectives, "a", newline="") as f:
-                print(
-                    "[CSV]",
-                    "PID =", os.getpid(),
-                    "PATH =", os.path.abspath(self.metrics_file_objectives),
-                    "EP =", self.episode_counter,
-                )
-                
-                
-                writer = csv.writer(f)
-                writer.writerow([
-                    self.episode_counter,
-                    float(episode_mean[0]),
-                    float(episode_mean[1]),
-                    float(episode_mean[2]),
-                    float(episode_mean[3]),
-                ])
+                fcntl.flock(f, fcntl.LOCK_EX)
+                try:
+                    print(
+                        "[CSV]",
+                        "PID =", os.getpid(),
+                        "PATH =", os.path.abspath(self.metrics_file_objectives),
+                        "EP =", self.episode_counter,
+                    )
+                    
+                    
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        self.episode_counter,
+                        float(episode_mean[0]),
+                        float(episode_mean[1]),
+                        float(episode_mean[2]),
+                        float(episode_mean[3]),
+                        pct_ideal_occupancy_day,
+                    ])
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
             
             if self.debug:
                 print("\n==============================")
                 print(f"Episode Mean Objectives: {episode_mean.round(3)}") # occupancy_score, uptime_score, sync_score and efficiency_score
+                print(f"Episode % Ideal Occupancy: {pct_ideal_occupancy_day:.1f}%")
                 print("==============================")
             
             self.day_done = True
@@ -1331,16 +1469,16 @@ class parallel_env(ParallelEnv):
             self._use_fallbacks()
 
         # =====================================================
-        # 3️⃣ QUANTUM / LSTM OVERRIDE
+        # 3️⃣ OCCUPANCY PREDICTION OVERRIDE
         # =====================================================
         if self.occupancy_source != "real":
+
             print(
-                f"⚛️ [ENV] Trying occupancy override | "
+                f"📈 [ENV] Trying occupancy override | "
                 f"source={self.occupancy_source} | "
                 f"service_day={service_day}"
             )
 
-            # reset per-day route-sequence predictions (used by risk features)
             self.occ_pred_by_route_seq = defaultdict(dict)
 
             self._override_occupancy_with_predictions_node_level(
@@ -1387,25 +1525,32 @@ class parallel_env(ParallelEnv):
         BUS_CAPACITY = 80  # MUST match generate_daily_data.py
 
         print(
-            f"⚛️ [ENV] Quantum override attempt START | "
+            f"⚛️ [ENV] Occupancy override attempt START | "
             f"source={self.occupancy_source} | "
             f"service_day={service_day}"
         )
 
         if service_day is None:
-            print("⚠️ [ENV] No service_day found. Skipping quantum occupancy.")
+            print("⚠️ [ENV] No service_day found. Skipping occupancy.")
             return
 
         column_map = {
+
+            # Quantum
             "quantum_qru": "y_pred_QRU",
             "quantum_lstm": "y_pred_LSTM",
+
+            # TimesFM
+            "timesfm": "y_pred_timesfm",
+            "timesfm_ft": "y_pred_timesfm_ft",
+            "naive": "y_pred_naive",
         }
 
         pred_column = column_map.get(self.occupancy_source)
         if pred_column is None:
             print(
                 f"⚠️ [ENV] Unknown occupancy_source={self.occupancy_source}. "
-                f"Skipping quantum override."
+                f"Skipping override."
             )
             return
 
@@ -1414,24 +1559,28 @@ class parallel_env(ParallelEnv):
         # ===============================
         # Load quantum predictions
         # ===============================
-        for route_id in self.quantum_routes:
-            route_dir = os.path.join(self.quantum_data_path, route_id)
+        if self.occupancy_source.startswith("quantum"):
+            routes = self.quantum_routes
+            base_path = self.quantum_data_path
+        else:
+            routes = self.prediction_routes
+            base_path = self.prediction_data_path
+
+        for route_id in routes:
+            route_dir = os.path.join(base_path, route_id)
 
             if not os.path.isdir(route_dir):
-                print(f"⚠️ [ENV] Quantum route dir not found | route={route_id}")
+                print(f"⚠️ [ENV] route dir not found | route={route_id}")
                 continue
 
             csv_files = [f for f in os.listdir(route_dir) if f.endswith(".csv")]
             if not csv_files:
-                print(f"⚠️ [ENV] No quantum CSV found | route={route_id}")
+                print(f"⚠️ [ENV] No CSV found | route={route_id}")
                 continue
 
             csv_path = os.path.join(route_dir, csv_files[0])
 
-            print(
-                f"⚛️ [ENV] Loading quantum CSV | "
-                f"route={route_id} | file={csv_files[0]}"
-            )
+            print(f"⚛️ [ENV] Loading CSV | route={route_id} | file={csv_files[0]}")
 
             try:
                 df = pd.read_csv(csv_path)
@@ -1441,10 +1590,7 @@ class parallel_env(ParallelEnv):
 
             day_df = df[df["service_day"] == service_day]
             if day_df.empty:
-                print(
-                    f"⚠️ [ENV] No quantum rows for "
-                    f"route={route_id} | day={service_day}"
-                )
+                print(f"⚠️ [ENV] No rows for route={route_id} | day={service_day}")
                 continue
 
             if route_id not in self.real_routes:
@@ -1453,10 +1599,6 @@ class parallel_env(ParallelEnv):
 
             path = self.real_routes[route_id]
 
-            # ===============================
-            # Map pt_sequence → node_id
-            # Normalize occupancy
-            # ===============================
             for _, row in day_df.iterrows():
                 seq = int(row["pt_sequence"]) - 1
                 if seq < 0 or seq >= len(path):
@@ -1467,16 +1609,15 @@ class parallel_env(ParallelEnv):
                     continue
 
                 node_id = int(path[seq])
-
                 raw_passengers = float(value)
                 occupancy_norm = min(raw_passengers / BUS_CAPACITY, 1.0)
 
                 node_predictions[node_id].append(occupancy_norm)
 
-                # Strong debug (sampled)
                 if len(node_predictions[node_id]) == 1:
                     print(
-                        f"🧪 [Q-OCC RAW→NORM] "
+                        f"🧪 [PRED-OCC RAW→NORM] "
+                        f"source={self.occupancy_source} | "
                         f"day={service_day} | "
                         f"route={route_id} | "
                         f"node={node_id} | "
@@ -1516,7 +1657,7 @@ class parallel_env(ParallelEnv):
             sample_items = sorted(self.occ_pred_by_route_seq[sample_rid].items())[:5]
             print(f"🧪 [Q-PRED MAP] route={sample_rid} sample(seq->occ)={sample_items}")
         print(
-            f"✅ [ENV] Quantum occupancy applied | "
+            f"✅ [ENV] Occupancy predictions applied | "
             f"source={self.occupancy_source} | "
             f"nodes_updated={overridden_nodes}"
         )
@@ -1553,10 +1694,10 @@ class DefaultReward(RewardBaseClass):
 
         # Adjustable weights (sum doesn't need to be 1; we do weighted average)
         self.reward_weights = reward_weights or {
-            "occ_penalty": 0.5,        # less than 1 to not dominate
-            "uptime_bonus": 0.7,
-            "sync_score": 0.5,         
-            "energy_efficiency": 0.6
+            "occ_penalty": 1.0,        # less than 1 to not dominate
+            "uptime_bonus": 0.0,
+            "sync_score": 0.0,         
+            "energy_efficiency": 0.0
         }
 
         self.occupancy_range = occupancy_range
@@ -1589,7 +1730,7 @@ class DefaultReward(RewardBaseClass):
             print(f"headways = {headways}")
 
         if not headways or len(headways) < 2: # Estou passando todos os agentes e não os agentes na rota especifica
-            print("SYNC RETURN 0 -> poucos ônibus:", headways)
+            # print("SYNC RETURN 0 -> poucos ônibus:", headways)
             return 0.0  # Not enough information to assess regularity
 
         headways = sorted(headways)  # ORDENAR
@@ -1597,11 +1738,12 @@ class DefaultReward(RewardBaseClass):
         # intervals in seconds
         intervals = [headways[i + 1] - headways[i] for i in range(len(headways) - 1)]
         # <<< DEBUG AQUI >>>
-        if len(intervals) > 0 and random.random() < 0.05:  # amostragem
-            print(
-                f"[SYNC DEBUG] intervals={intervals} | "
-                f"target={self.target_headway}"
-            )
+        #if len(intervals) > 0 and random.random() < 0.05:  # amostragem
+        #    print(
+        #        f"[SYNC DEBUG] intervals={intervals} | "
+        #        f"target={self.target_headway}"
+        #    )
+        
         # remove noise/invalid intervals não existe “intervalo negativo” entre dois veículos então é removido se tiver
         intervals = [x for x in intervals if x > 0]
         if len(intervals) < 2:
@@ -1761,6 +1903,7 @@ class DefaultReward(RewardBaseClass):
 
     def getReward(
         self,
+        agent,
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
         agent_state=None, headways=None, is_raining=False, 
@@ -1768,7 +1911,7 @@ class DefaultReward(RewardBaseClass):
     ):
 
         objectives = self.getObjectives(
-
+            agent,
             new_state,
             previous_state,
             action,
@@ -1842,6 +1985,7 @@ class DefaultReward(RewardBaseClass):
     # ===========================
     def getObjectives(
         self,
+        agent,
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
         agent_state=None, headways=None,
@@ -1863,12 +2007,19 @@ class DefaultReward(RewardBaseClass):
         uptime = 0.0
         sync = 0.0
         eff = 0.0
+        occupancy = 0.0 
 
         if agent_state is not None:
+            occupancy = float(agent_state.get("occupancy", 0.0))
             occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
         sync = self._sync_component(headways or [])
+
+        # registra pra métrica de fim de episódio
+        if hasattr(self, "env") and self.env is not None:
+            self.env.episode_occupancy_values[agent].append(occupancy)  # valor bruto, não occ_pen
+            self.env.episode_occupancy_ideal_flags[agent].append(1.0 if occ_pen == 0.0 else 0.0)
 
         # --- Base efficiency ---
         eff = self._efficiency_component(float(estimated_time), float(expected_time))
@@ -1926,6 +2077,7 @@ class DefaultReward(RewardBaseClass):
     # ===========================
     def getVectorReward(
         self,
+        agent, 
         new_state, previous_state, action, target, network,
         estimated_time, expected_time, delay,
         agent_state=None,
@@ -1936,7 +2088,7 @@ class DefaultReward(RewardBaseClass):
     ):
 
         obj = self.getObjectives(
-
+            agent, 
             new_state,
             previous_state,
             action,

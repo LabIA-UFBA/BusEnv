@@ -21,8 +21,8 @@ from collections import defaultdict
 # ============================================================
 # CONFIGURAÇÕES DE CAMINHOS
 # ============================================================
-BASE_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tmp"
-OUTPUT_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tmp/daily"
+BASE_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm"
+OUTPUT_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm/daily"
 GRAPH_PATH = "/mnt/ssd1/wesley/BusEnv/src/viz/graph_gtfs_fev_2024.gpickle"
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -93,34 +93,91 @@ for day_idx, date_str in enumerate(dates):
     # === OD: tempos de viagem e ocupação ===
     try:
         df_od = pd.read_parquet(os.path.join(BASE_PATH, "OD", f"od-{date_str}.parquet"))
+        df_od = pd.read_parquet(os.path.join(BASE_PATH, "OD", f"od-{date_str}.parquet"))
+
+        print("\n==================== DEBUG OD ====================")
+        print("Arquivo:", date_str)
+        print("Total de registros:", len(df_od))
+        print("Colunas:", list(df_od.columns))
+
         df_od["stop_id"] = df_od["stop_id"].astype(str)
         df_od["stop_time"] = pd.to_datetime(df_od["stop_time"])
+
+        print("Nós únicos:", df_od["stop_id"].nunique())
+        print("Primeiros stop_ids:")
+        print(df_od["stop_id"].head(10).tolist())
+
+        print("Primeiros registros:")
+        print(df_od[["stop_id", "trip_id", "vehicle", "pt_sequence"]].head())
+        print("=================================================\n")
+
+        valid_nodes = df_od["stop_id"].isin(VALID_NODES).sum()
+
+        print("Nós presentes no grafo:", valid_nodes)
+        print("Nós fora do grafo:", len(df_od) - valid_nodes)
+
+        if valid_nodes == 0:
+            print("⚠️ Nenhum stop_id do arquivo existe no grafo.")
+
+        total_pairs = 0
+        valid_stop_pairs = 0
+        valid_edge_pairs = 0
+        accepted_pairs = 0
 
         # Tempo entre paradas
         grouped = df_od.sort_values(by=["vehicle", "trip_id", "direction_id", "pt_sequence"]) \
                        .groupby(["vehicle", "trip_id", "direction_id"])
         for _, group in grouped:
             for i in range(1, len(group)):
+
+                total_pairs += 1
+
                 prev, curr = group.iloc[i - 1], group.iloc[i]
+
                 a, b = prev["stop_id"], curr["stop_id"]
+
                 if not (validate_stop(a) and validate_stop(b)):
                     continue
+
+                valid_stop_pairs += 1
+
                 if not validate_edge(a, b):
                     continue
+
+                valid_edge_pairs += 1
+
                 delta = (curr["stop_time"] - prev["stop_time"]).total_seconds()
+
                 if MIN_TRAVEL_TIME_SECONDS <= delta <= MAX_TRAVEL_TIME_SECONDS:
+                    accepted_pairs += 1
                     avg_travel_times[(a, b)].append(delta)
+
+        print("\n========== DEBUG TRAVEL ==========")
+        print("Total pares:", total_pairs)
+        print("Passaram validate_stop:", valid_stop_pairs)
+        print("Passaram validate_edge:", valid_edge_pairs)
+        print("Passaram filtro tempo:", accepted_pairs)
+        print("==================================")
 
         # Ocupação média por parada
         if "loading" in df_od.columns:
             df_od["loading"] = pd.to_numeric(df_od["loading"], errors="coerce")
+            loading_rows = 0
+            loading_valid_nodes = 0
             for stop_id, group in df_od.groupby("stop_id"):
+                loading_rows += 1
                 if not validate_stop(stop_id):
                     continue
+                loading_valid_nodes += 1
                 avg_load = group["loading"].mean()
                 occupancy = min(avg_load / BUS_CAPACITY, 1.0)
                 occupancy_rate[stop_id].append(occupancy)
 
+            print("\n========== DEBUG OCCUPANCY ==========")
+            print("Stops com loading:", loading_rows)
+            print("Stops válidos:", loading_valid_nodes)
+            print("Occupancy geradas:", len(occupancy_rate))
+            print("=====================================")
         print(f"   ✓ OD: {len(avg_travel_times)} pares de paradas, {len(occupancy_rate)} ocupações")
     except Exception as e:
         print(f"⚠️ Erro OD {date_str}: {e}")
@@ -129,6 +186,14 @@ for day_idx, date_str in enumerate(dates):
     try:
         df_board = pd.read_parquet(os.path.join(BASE_PATH, "Boarding", f"boarding-{date_str}.parquet"))
         df_board["stop_id"] = df_board["stop_id"].astype(str)
+        print("\n========== DEBUG BOARDING ==========")
+        print("Registros:", len(df_board))
+        print("Nós únicos:", df_board["stop_id"].nunique())
+
+        valid = df_board["stop_id"].isin(VALID_NODES).sum()
+
+        print("Registros em nós válidos:", valid)
+        print("====================================")
         df_board = df_board[df_board["stop_id"].apply(validate_stop)]
         stop_counts = df_board.groupby("stop_id").size()
         for stop_id, count in stop_counts.items():

@@ -31,7 +31,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("ippo")
+algos=("mappo" "hatrpo" "itrpo")
 
 # Funcionaram 100%
 # IA2C 
@@ -46,7 +46,7 @@ algos=("ippo")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade) 
-runs_per_algo=1
+runs_per_algo=5
 
 # Pastas de saída ALTERAR CASO NECESSARIO ANTES DE RODAR
 LOG_DIR="${ROOT_DIR}/logs"
@@ -73,7 +73,11 @@ for run in $(seq 1 "${runs_per_algo}"); do
       run_id="run${next_run}"
       log_file="${LOG_DIR}/${algo}_${run_id}.log"
 
-      echo "Lançando: ${algo} -> ${log_file}"
+      METRICS_DIR="${ROOT_DIR}/metrics"
+      mkdir -p "${METRICS_DIR}"
+      export SUNT_METRICS_FILE="${METRICS_DIR}/episode_metrics_${algo}_${run_id}.csv"
+
+      echo "Lançando: ${algo} -> ${log_file} | metrics -> ${SUNT_METRICS_FILE}"
 
       nohup python "${TRAIN_SCRIPT}" \
         --algo "${algo}" \

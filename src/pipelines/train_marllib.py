@@ -63,6 +63,13 @@ class RLlibSuntBus(MultiAgentEnv):
     def __init__(self, env_config):
         BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+        metrics_file_objectives = os.environ.get(
+            "SUNT_METRICS_FILE",
+            "/mnt/ssd1/wesley/BusEnv/metrics/episode_metrics.csv" # Change this to your path 
+        )
+
+        print(f"[ENV INIT] Using metrics_file_objectives = {metrics_file_objectives}")
+
         # Load graph
         graph_path = os.path.join(BASE_DIR, "viz", "graph_gtfs_fev_2024.gpickle")
         if not os.path.exists(graph_path):
@@ -94,7 +101,7 @@ class RLlibSuntBus(MultiAgentEnv):
             agents_per_route=5, # Number of agents sharing the same route
             use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
-            num_agents=20,
+            num_agents=25,
             use_rain = False, # Need to pass to true when using rain
             avg_travel_time_AB=avg_travel_time_AB,
             future_demand_at_B=future_demand_at_B,
@@ -102,8 +109,9 @@ class RLlibSuntBus(MultiAgentEnv):
             uptime_normalized=uptime_normalized,
             real_routes=real_routes,
             route_metadata=route_metadata,
-            occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm"
-            reward_raining_type = "normal" # normal | penalization | bonus
+            occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm_ft" | "timesfm" | "naive"
+            reward_raining_type = "normal", # normal | penalization | bonus
+            metrics_file_objectives=metrics_file_objectives,
         )
 
         # Supersuit wrappers
@@ -305,6 +313,11 @@ def main():
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
+    metrics_dir = "/mnt/ssd1/wesley/BusEnv/metrics" # Change this to your path 
+    os.makedirs(metrics_dir, exist_ok=True)
+    run_tag = args.cc_run_id or f"{args.algo}-default"
+    metrics_file_objectives = os.path.join(metrics_dir, f"episode_metrics_{run_tag}.csv")
+    
     # Environment
     env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
 
@@ -318,10 +331,10 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 130000},  # adjust as needed
+        "stop": {"timesteps_total": 200000},  # adjust as needed
         "checkpoint_freq": 5,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 0,     # adjust as needed to gain velocity in the training, 20 is a good point
+        "num_workers": 8,     # adjust as needed to gain velocity in the training, 15 is a good point
         "share_policy": "individual",
         "local_dir": "/mnt/ssd1/ray_results",
     }
