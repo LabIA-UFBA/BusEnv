@@ -1,66 +1,93 @@
-# 🚍 Bus Env – Multi-Agent Urban Bus Simulation (Modular)
+# 🚍 BusEnv — Multi-Agent Reinforcement Learning for Urban Bus Fleet Control
 
-This project provides a **multi-agent reinforcement learning environment** for urban bus operations, based on real-world data from the **Salvador Urban Network Transportation (SUNT)** system.  
-It has been refactored into a **modular package** with a clean structure, clear separation of concerns, and a unified CLI.
+BusEnv is a **multi-agent reinforcement learning (MARL) environment** for urban bus fleet control, built on real operational data from the **Salvador Urban Network Transportation (SUNT)** system (Salvador, Brazil). Buses are modeled as independent agents navigating a real GTFS transit network, with passenger demand, boarding/alighting, and travel times derived from real Automatic Vehicle Location (AVL) / Automatic Passenger Counting (APC)-style records rather than synthetic distributions.
+
+The environment follows the [PettingZoo](https://pettingzoo.farama.org/) `ParallelEnv` API and is trained via [Ray RLlib](https://docs.ray.io/en/releases-1.8.0/rllib.html) or [MARLlib](https://github.com/Replicable-MARL/MARLlib).
 
 ---
 
-## 🚌 Overview
+## Highlights
 
-The **Multi-Agent Urban Bus Simulation Environment** is built on top of real public transportation data from Salvador (Brazil).  
-It simulates the operation of multiple buses as independent agents navigating a real transit network, enabling the development and testing of intelligent control strategies for public transport.
+- **Data-driven passenger demand.** Boarding/alighting are not a fixed percentage of bus capacity: each (route, stop) maintains its own passenger queue, replenished at a real arrival rate derived from historical per-visit boarding counts and inter-visit intervals, and depleted when a bus actually boards passengers — two buses serving the same stop minutes apart are no longer credited with the same ridership.
+- **Multi-agent coordination via headway awareness.** Each agent observes a signed, normalized gap to its immediate leading and following bus on the same route (not just a population-wide regularity statistic), and a matching reward term is weighted into the scalarized reward — enabling agents to react to bunching or excessive gaps.
+- **Multi-objective reward.** Four weighted components — occupancy, uptime, headway synchronization, and travel-time efficiency — are computed every step (`getObjectives`) and can be scalarized (`scalarize`) or consumed directly as a reward vector for MORL algorithms.
+- **Real network and routes.** 2,871 stops and 4,526 edges from Salvador's Feb-2024 GTFS feed, with 668 real historical trip patterns as candidate routes.
+- **Interactive replay visualization.** A self-contained, browser-based viewer (real OpenStreetMap basemap, draggable timeline, editable route/stop labels, PNG export) for inspecting and presenting simulated episodes — see [`src/viz/README.md`](src/viz/README.md).
 
-Key aspects:
-- Realistic, **data-driven** training scenarios.  
-- Focus on **optimizing service efficiency** and **passenger experience**.  
-- Uses **boarding, alighting, and travel time data** from actual operations.  
+---
+
+## Environment formulation
+
+**Agents.** Each bus is an independent agent (`agent_0`, `agent_1`, …), assigned a fixed real route (an ordered sequence of GTFS stops) that it repeatedly traverses back and forth for the length of a simulated operational day (24h).
+
+**Observation space** — `Box(12,)` per agent:
+
+| # | Feature | Description |
+|---|---|---|
+| 0 | `time_of_day_norm` | Simulated time of day, normalized to [0, 1] |
+| 1 | `occupancy_rate` | Current bus occupancy, fraction of capacity |
+| 2 | `avg_travel_time_AB` | Normalized travel time to the next stop |
+| 3 | `future_demand_at_B` | Historical boarding demand at the next stop |
+| 4 | `uptime` | Normalized time since last maintenance |
+| 5 | `maintenance_status` | 1.0 if operational, 0.0 otherwise |
+| 6 | `curr_node_id` | Current stop (graph node index) |
+| 7 | `next_node_id` | Next stop (graph node index) |
+| 8 | `is_raining` | Weather flag (optional, data-driven) |
+| 9 | `occ_risk_out` | Forecast risk of leaving the ideal occupancy band |
+| 10 | `headway_leader_norm` | Signed, normalized time gap to the leading bus on the route |
+| 11 | `headway_follower_norm` | Signed, normalized time gap to the following bus on the route |
+
+**Action space** — `Discrete(3)`: `WAIT`, `MOVE` (advance to the next stop), `SERVICE_CENTER` (divert to a maintenance node).
+
+**Reward** — a weighted combination of four objectives, each normalized to `[0, 1]`:
+
+| Objective | What it measures |
+|---|---|
+| Occupancy | Deviation from an ideal occupancy band (default 0.6–0.9 of capacity) |
+| Uptime | Time available before the next required maintenance |
+| Synchronization | Pairwise headway regularity vs. a target interval (default 10 min) |
+| Efficiency | Actual vs. expected travel time |
+
+**Passenger demand model.** Each `(route, stop)` pair has its own passenger queue. Between visits, it accumulates at an arrival rate (passengers/second) derived from real historical data; when a bus arrives, boarding is `min(queue, remaining capacity)` and the queue depletes accordingly, while alighting reduces onboard occupancy by a historical per-stop fraction. See [Data & demand pipeline](#data--demand-pipeline) below.
+
+---
+
+## Data & demand pipeline
+
+| Source | Content |
+|---|---|
+| `src/viz/graph_gtfs_fev_2024.gpickle` | Salvador GTFS network graph (Feb 2024): 2,871 stops with lat/lon, 4,526 edges with distance |
+| `src/training_observation/real_routes.zip` | 668 real historical trip patterns (ordered stop sequences) |
+| `src/training_observation/daily_may/` | Per-day travel-time / occupancy / uptime reference data |
+| Raw AVL/APC-style parquet (`OD`, `Boarding`, `LTI`) | Per-visit boarding/alighting counts and timestamps, May 2024 (30 days) |
+
+**`src/pipelines/generate_passenger_flow_stats.py`** aggregates the raw per-visit records into `stop_passenger_flow.pkl`: mean boardings, mean alighting fraction, and mean inter-visit interval, at a cascading granularity — `(route, stop, hour of day)` → `(route, stop)` → `(stop, hour of day)` → `(stop)` → a global fallback — so sparse combinations fall back to a broader, still-real estimate rather than an arbitrary default. Aggregation is a direct sum/count mean; no distribution-shape-sensitive outlier filtering is applied, since per-visit boarding/alighting counts are heavily zero-inflated and such filtering was found to systematically suppress real demand.
+
+To refresh these statistics with new or additional data, re-run the same script — it auto-discovers every `od-YYYY-MM-DD.parquet` file under the configured data folder (no hardcoded date range):
+
+```bash
+python3 src/pipelines/generate_passenger_flow_stats.py --base-path /path/to/SUNT/tpm
+```
+
+---
+
+## Visualization
+
+`src/viz/replay_export.py` + `src/viz/render_replay.py` turn a recorded episode (`record_replay=True`) into a self-contained HTML viewer: real OpenStreetMap basemap, a draggable timeline with step-by-step event navigation, live per-stop queue and per-bus occupancy indicators, editable route/stop labels, and PNG export for figures. `src/pipelines/generate_eval_replay.py` generates the replay logs, either from a random (untrained) policy or a trained checkpoint, enabling side-by-side before/after-training comparisons on a shared map scale.
+
+See **[`src/viz/README.md`](src/viz/README.md)** for the exact commands.
 
 ---
 
 ## 🎯 Objectives
 
 Agents (buses) are trained to:
-- Reduce passenger waiting time at stops.  
-- Maintain regular headways (time between buses).  
-- Balance occupancy (avoid overcrowding or running empty).  
-- Operate efficiently regarding energy and maintenance.  
+- Reduce passenger waiting time at stops.
+- Maintain regular headways (time between buses).
+- Balance occupancy (avoid overcrowding or running empty).
+- Operate efficiently regarding energy and maintenance.
 
-The system applies **Multi-Agent Reinforcement Learning (MARL)**, where each bus acts autonomously but cooperates implicitly through a **shared reward function**.
-
----
-
-## 📊 Observations
-
-During training, the environment generates key metrics such as:
-
-- **avg_travel_time_AB** → Average travel time between reference stops.  
-- **future_demand_at_B** → Predicted passenger demand at stop B.  
-- **occupancy_rate** → Proportion of bus capacity in use.  
-- **uptime_normalized** → Normalized availability of a bus in operation.  
-
-These signals provide feedback to agents and can be used for both monitoring and reward shaping.
-
----
-
-## 🎮 Actions
-
-Each bus (agent) can choose among three actions:
-
-- **WAIT** → Delay before continuing, to avoid clustering and improve headway.  
-- **MOVE** → Proceed to the next stop.  
-- **SERVICE_CENTER** → Divert to maintenance when required (low fuel or maintenance issues).  
-
----
-
-## 🎯 Reward Function
-
-The reward combines:
-- Passenger service quality (shorter waits, demand satisfaction).  
-- Operational efficiency (balanced occupancy, timely trips).  
-- Maintenance/fuel management (penalties for ignoring issues).  
-- Traffic flow & coordination (avoid idling or bus bunching).  
-
-This ensures agents balance **service quality, fleet efficiency, and sustainability**.
+The system applies **Multi-Agent Reinforcement Learning (MARL)**, where each bus acts autonomously and can coordinate with nearby buses on its route through the headway-aware observation and reward described above.
 
 ---
 
@@ -69,19 +96,19 @@ This ensures agents balance **service quality, fleet efficiency, and sustainabil
 The environment integrates:
 
 - **MARLlib** → Framework for MARL built on Ray RLlib.
-- **Ray RLlib** → Distributed reinforcement learning.  
-- **PettingZoo** → Multi-agent environment API.  
-- **SuperSuit** → Wrappers for preprocessing.  
-- **Gymnasium** → Standard API.  
+- **Ray RLlib** → Distributed reinforcement learning.
+- **PettingZoo** → Multi-agent environment API.
+- **SuperSuit** → Wrappers for preprocessing.
+- **Gymnasium** → Standard API.
 
 **Configuration:**
-- Each bus is an agent.  
-- Scenario based on real SUNT data (routes, stops, demand).  
-- Each episode ≈ one simulated operational day.  
-- PPO (Proximal Policy Optimization) with shared policy.  
+- Each bus is an agent.
+- Scenario based on real SUNT data (routes, stops, demand).
+- Each episode ≈ one simulated operational day.
+- PPO (Proximal Policy Optimization), independent or shared policies depending on the training script.
 
-**Scaling:**  
-Supports **hundreds of agents in parallel**, leveraging Ray’s distributed training.
+**Scaling:**
+Supports **hundreds of agents in parallel**, leveraging Ray's distributed training.
 
 ---
 
@@ -89,25 +116,26 @@ Supports **hundreds of agents in parallel**, leveraging Ray’s distributed trai
 
 ```
 src/
-├─ envs/                        # PettingZoo environments
-├─ pipelines/                   # observations, routes, stats, RLlib training
+├─ envs/                        # PettingZoo environment (sunt_env.py)
+├─ pipelines/                   # data generation, training entrypoints, replay generation
 ├─ tools/                       # data utilities and analysis
-├─ viz/                         # graph visualization
+├─ viz/                         # graph visualization + interactive replay viewer
+├─ models/                      # custom RLlib/MARLlib model + policy classes
 ├─ tests/                       # automated tests
-├─ training_observation/        # training observations (unzip real_routes.zip here)
-├─ output_observation_travel_time_sum_amout/  # experimental outputs
-└─ __pycache__/                 # python cache
+├─ training_observation/        # precomputed reference data (unzip real_routes.zip here)
+└─ output_observation_travel_time_sum_amout/  # experimental outputs
+replays/                        # generated replay logs / scenes / HTML viewers (not tracked in git)
 ```
 
-- **CLI** exposes subcommands mapping to these modules.  
-- Some scripts still use **hardcoded paths** → recommended to migrate to configs or `.env`.  
+- **CLI** exposes subcommands mapping to these modules.
+- Some scripts still use **hardcoded paths** → recommended to migrate to configs or `.env`.
 
 ---
 
 ## ⚡ Installation & Usage
 
-Before proceeding, make sure you have **Conda** installed.  
-👉 Download and install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (recommended) or [Anaconda](https://www.anaconda.com/download).  
+Before proceeding, make sure you have **Conda** installed.
+👉 Download and install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (recommended) or [Anaconda](https://www.anaconda.com/download).
 On WSL/Linux, you can install Miniconda with:
 
 ```bash
@@ -246,5 +274,33 @@ marllib view-metrics -- --help
 
 # Run the SUNT environment entrypoint
 marllib env-sunt --
+
+# Regenerate real-data passenger flow statistics (boarding/alighting/demand)
+python3 src/pipelines/generate_passenger_flow_stats.py
+
+# Generate a replay log + interactive HTML viewer (see src/viz/README.md)
+python3 src/pipelines/generate_eval_replay.py --mode random --out replays/before.json
+python3 src/viz/replay_export.py --replay replays/before.json --out replays/scene_before.json
+python3 src/viz/render_replay.py --scene replays/scene_before.json -o replays/viewer.html
+```
+
 ---
 
+## Citation
+
+If you use BusEnv in academic work, please cite this repository:
+
+```bibtex
+@misc{busenv2026,
+  title        = {BusEnv: A Multi-Agent Reinforcement Learning Environment for Urban Bus Fleet Control},
+  author       = {LabIA-UFBA},
+  year         = {2026},
+  howpublished = {\url{https://github.com/LabIA-UFBA/BusEnv}}
+}
+```
+
+*(Replace with your paper's official reference once published.)*
+
+## License
+
+MIT — see `pyproject.toml`.

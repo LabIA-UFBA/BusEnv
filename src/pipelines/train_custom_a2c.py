@@ -41,6 +41,7 @@ class RLlibSuntBus(MultiAgentEnv):
         uptime_normalized = load_pickle("uptime_normalized.pkl")
         real_routes = load_pickle("real_routes.pkl")
         route_metadata = load_pickle("route_metadata.pkl")
+        passenger_flow_stats = load_pickle("stop_passenger_flow.pkl")
 
         # Parallel environment
         self.env = parallel_env(
@@ -54,6 +55,7 @@ class RLlibSuntBus(MultiAgentEnv):
             uptime_normalized=uptime_normalized,
             real_routes=real_routes,
             route_metadata=route_metadata,
+            passenger_flow_stats=passenger_flow_stats,
         )
 
         # Supersuit wrappers

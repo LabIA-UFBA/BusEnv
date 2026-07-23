@@ -51,6 +51,8 @@ def env_creator(config):
         real_routes = pickle.load(f)
     with open(os.path.join(obs_dir, "route_metadata.pkl"), "rb") as f:
         route_metadata = pickle.load(f)
+    with open(os.path.join(obs_dir, "stop_passenger_flow.pkl"), "rb") as f:
+        passenger_flow_stats = pickle.load(f)
 
     # === Cria env paralelo PettingZoo ===
     env = parallel_env(
@@ -64,6 +66,7 @@ def env_creator(config):
         uptime_normalized=uptime_normalized,
         real_routes=real_routes,
         route_metadata=route_metadata,
+        passenger_flow_stats=passenger_flow_stats,
     )
 
     # === Wrappers ===

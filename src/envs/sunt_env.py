@@ -31,7 +31,8 @@ class parallel_env(ParallelEnv):
                 render_mode=None, avg_travel_time_AB=None, future_demand_at_B=None,
                 occupancy_rate=None, uptime_normalized=None,
                 real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal",
-                metrics_file_objectives=None):  
+                metrics_file_objectives=None, passenger_flow_stats=None,
+                record_replay=False, replay_output_dir=None):
 
         # --- Basic configuration ---
         self.network = network
@@ -73,6 +74,23 @@ class parallel_env(ParallelEnv):
         self.occupancy_rate = occupancy_rate or {}
         self.uptime_normalized = uptime_normalized or {}
 
+        # --- Real passenger flow stats (generate_passenger_flow_stats.py) ---
+        # Cascading fallback levels: by_route_stop_hour -> by_route_stop -> by_stop_hour -> by_stop -> global
+        self.passenger_flow_stats = passenger_flow_stats or {}
+
+        # --- Per-(route, stop) passenger queue state (fixes static-occupancy bug) ---
+        # Keyed by (route_id, node_id) -> passengers currently waiting at that stop for that route.
+        self.stop_waiting_passengers = {}
+        self.last_stop_update_time = {}
+        # agent -> route_id (trip_id key into self.real_routes), resolved once per agent in reset()
+        # instead of re-scanning self.real_routes.items() on every step().
+        self.agent_route_id = {}
+
+        # --- Replay logging (for the game-like map visualization) ---
+        self.record_replay = bool(record_replay)
+        self.replay_output_dir = replay_output_dir or "replays"
+        self.replay_log = []
+
         # --- Global clock and statistics ---
         self.agent_times = {agent: 6 * 60 * 60 for agent in self.possible_agents}  # Every agent starts at 6:00 AM 
         self.headways = {}
@@ -109,12 +127,9 @@ class parallel_env(ParallelEnv):
             }
 
         # --- Reward parameters ---
-        self.reward_weights = {
-            "occ_penalty": 1.0,
-            "uptime_bonus": 1.0,
-            "sync_score": 1.0,
-            "energy_efficiency": 1.0
-        }
+        # (the live weight dict is DefaultReward.reward_weights, set on self.reward
+        # above; occupancy_range is duplicated here because _compute_occ_risk_for_agent,
+        # an env method, also needs it for the forecast-based risk feature.)
         self.occupancy_range = (0.6, 0.9)
 
         # --- Risk feature (forecast-based) ---
@@ -323,6 +338,11 @@ class parallel_env(ParallelEnv):
         self.infos = {}
         observations = {}
 
+        # --- Reset per-day passenger queues and replay log ---
+        self.stop_waiting_passengers = {}
+        self.last_stop_update_time = {}
+        self.replay_log = []
+
         # --- Reset agent coordination and presence tracking ---
         self.node_occupancy = {node: [] for node in self.network.nodes}  # which agents are currently at each node
         self.agent_positions = {agent: None for agent in self.possible_agents}
@@ -452,6 +472,15 @@ class parallel_env(ParallelEnv):
         # --- Usa sempre as rotas fixas ---
         self.agent_routes = self.fixed_agent_routes
 
+        # --- Resolve route_id (trip_id) for every agent up front, in one pass, so that
+        # pairwise-headway lookups below never depend on loop ordering between agents
+        # that share the same route. ---
+        path_to_route_id = {tuple(v): k for k, v in self.real_routes.items()}
+        self.agent_route_id = {
+            agent: path_to_route_id.get(tuple(path), "unknown")
+            for agent, path in self.agent_routes.items()
+        }
+
         # --- Inicializa estados de cada agente ---
         for agent in self.agents:
             if agent not in self.agent_routes:
@@ -486,11 +515,9 @@ class parallel_env(ParallelEnv):
             self.node_occupancy[initial].append(agent)
 
             # If this is the first agent on this route, mark as leader
-            route_id = [k for k, v in self.real_routes.items() if v == path]
-            if route_id:
-                rid = route_id[0]
-                if rid not in self.route_leader:
-                    self.route_leader[rid] = agent
+            rid = self.agent_route_id.get(agent, "unknown")
+            if rid != "unknown" and rid not in self.route_leader:
+                self.route_leader[rid] = agent
 
 
             self.states[agent] = initial
@@ -529,6 +556,8 @@ class parallel_env(ParallelEnv):
                 # Rain off
                 is_raining = False
 
+            leader_gap, follower_gap = self._compute_pairwise_headway_gaps(agent)
+
             obs_array = np.array([
                 self.agent_times[agent] / (24 * 60 * 60),
                 self.agent_states[agent]["occupancy"],
@@ -540,6 +569,8 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(next_node)],
                 1.0 if is_raining else 0.0,
                 occ_risk,
+                self._normalize_headway_gap(leader_gap),
+                self._normalize_headway_gap(follower_gap),
             ], dtype=np.float32)
 
             clipped_obs = np.clip(
@@ -711,15 +742,20 @@ class parallel_env(ParallelEnv):
                 self.agent_times[agent] += travel_time # Avançando o relogio do agente baseado no tempo da viagem
                 self.estimated_times[agent] += travel_time
 
+                # --- Resolve this agent's route id once (reused for the queue key below and
+                # for the headway key further down, instead of re-scanning self.real_routes). ---
+                route_id = self.agent_route_id.get(agent, "unknown")
+
                 # Update occupancy
                 prev_occ = state.get("occupancy", 0.0)
-                ALIGHTING_RATE = 0.20 # How many people get out of the bus, fraction of passengers that leave the bus at each stop
-                if curr_node in self.occupancy_rate: # We make a mix here, the occupation that we already had with the new one 
+
+                if self.occupancy_source != "real":
                     # =====================================================
                     # Prediction-based occupancy (Quantum / TimesFM / etc.)
+                    # Unchanged: still driven by the static occupancy_rate override
+                    # built by _override_occupancy_with_predictions_node_level().
                     # =====================================================
-                    if self.occupancy_source != "real":
-
+                    if curr_node in self.occupancy_rate:
                         occupancy = self.occupancy_rate[curr_node]
                         occupancy = max(0.0, min(occupancy, 1.0))
 
@@ -733,66 +769,56 @@ class parallel_env(ParallelEnv):
                                 f"pred_occ={occupancy:.4f} | "
                                 f"source={self.occupancy_source}"
                             )
-
-                    # =====================================================
-                    # Real occupancy (cumulative model)
-                    # =====================================================
                     else:
-                        # ========= OLD IMPLEMENTATION =========
-                        expected_occ = self.occupancy_rate[curr_node] # Ex with alpha 0.5: prev_occ = 0.30, expected_occ = 0.90 -> occupancy = 0.5 * 0.30 + 0.5 * 0.90 = 0.60
-                        alpha = 0.5
-                        occupancy = (1 - alpha) * prev_occ + alpha * expected_occ
-                        occupancy = max(0.0, min(occupancy, 1.0)) 
-                            
-                        # ========= NOVA IDEIA PRA BOARDING ========= 
-
-                        # Boarding rate at the current stop (0.0 - 1.0 of bus capacity)
-                        #boarding_rate = self.occupancy_rate[curr_node]
-
-                        # Passengers leave the bus
-                        #occ_after_alighting = prev_occ * (1.0 - ALIGHTING_RATE)
-
-                        # New passengers board the bus
-                        #occupancy = min(occ_after_alighting + boarding_rate, 1.0)
-                        #occupancy = max(0.0, occupancy)
-
-                        if np.random.rand() < 0.1 and self.debug:
-                            print(
-                                f"[OCC CUMULATIVE] "
-                                f"prev={prev_occ:.3f} | "
-                                #f"boarding={boarding_rate:.3f} | "
-                                #f"after_alighting={occ_after_alighting:.3f} | "
-                                f"new={occupancy:.3f}"
-                            )
-
-                        if self.debug_quantum and self.episode_step_counter % 50 == 0:
-                            print(
-                                f"🧪 [REAL-OCC USED] "
-                                f"day={self.current_day_index} | "
-                                f"step={self.episode_step_counter} | "
-                                f"agent={agent} | "
-                                f"node={curr_node} | "
-                                f"prev={prev_occ:.4f} | "
-                                #f"boarding={boarding_rate:.4f} | "
-                                #f"after_alighting={occ_after_alighting:.4f} | "
-                                f"used={occupancy:.4f}"
-                            )
+                        occupancy = prev_occ
 
                 else:
-                    # No boarding information available for this stop
+                    # =====================================================
+                    # Real occupancy: per-(route, stop) passenger QUEUE.
+                    #
+                    # Boarding/alighting happens when the bus ARRIVES at next_node (not
+                    # when it departs curr_node, which the previous implementation used).
+                    # The queue accumulates passengers between visits at a real arrival
+                    # rate (pax/sec, derived from historical boardings-per-visit divided
+                    # by the historical inter-visit time) and DEPLETES when a bus boards —
+                    # this is what makes a second bus passing 1 minute after the first see
+                    # a near-empty queue instead of the same static value.
+                    # =====================================================
+                    qkey = (route_id, next_node)
+                    now_time = self.agent_times[agent]
 
-                    if self.occupancy_source != "real":
-                        occupancy = prev_occ
+                    arrival_rate = self._get_arrival_rate(route_id, next_node, now_time, going_forward)
+                    alight_frac = self._get_alight_frac(route_id, next_node, now_time, going_forward)
+
+                    if qkey not in self.stop_waiting_passengers:
+                        # First visit of the day to this (route, stop): seed with the
+                        # expected per-visit boarding count rather than 0 — the historical
+                        # average is itself already conditioned on periodic servicing.
+                        queue = self._initial_queue_estimate(route_id, next_node, now_time, going_forward)
                     else:
-                        occupancy = prev_occ 
-                        # occupancy = prev_occ * (1.0 - ALIGHTING_RATE)
-                        # occupancy = max(0.0, occupancy)
+                        last_t = self.last_stop_update_time.get(qkey, now_time)
+                        elapsed = max(0.0, now_time - last_t)
+                        queue = self.stop_waiting_passengers[qkey] + arrival_rate * elapsed
 
-                    if np.random.rand() < 0.1 and self.debug:
+                    prev_onboard = prev_occ * self.max_capacity
+                    alighting = prev_onboard * alight_frac
+                    onboard_after_alighting = max(0.0, prev_onboard - alighting)
+
+                    remaining_capacity = max(0.0, self.max_capacity - onboard_after_alighting)
+                    boarding = min(queue, remaining_capacity)
+
+                    self.stop_waiting_passengers[qkey] = max(0.0, queue - boarding)
+                    self.last_stop_update_time[qkey] = now_time
+
+                    occupancy = max(0.0, min((onboard_after_alighting + boarding) / self.max_capacity, 1.0))
+
+                    if np.random.rand() < 0.05 and self.debug:
                         print(
-                            f"[OCC NO DATA] "
-                            f"prev={prev_occ:.3f} | "
-                            f"new={occupancy:.3f}"
+                            f"[QUEUE] route={route_id} node={next_node} "
+                            f"prev_occ={prev_occ:.3f} queue_before_board={queue:.2f} "
+                            f"boarded={boarding:.2f} alighted={alighting:.2f} "
+                            f"queue_after={self.stop_waiting_passengers[qkey]:.2f} "
+                            f"new_occ={occupancy:.3f}"
                         )
 
                 state["occupancy"] = occupancy
@@ -839,10 +865,6 @@ class parallel_env(ParallelEnv):
                 #if next_node not in self.headways:
                 #    self.headways[next_node] = []
                 #self.headways[next_node].append(self.agent_times[agent])
-
-                # --- identificar rota ---
-                route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
-                route_id = route_id[0] if route_id else "unknown"  
 
                 # --- direção ---
                 direction = state.get("going_forward", True)  
@@ -1053,9 +1075,8 @@ class parallel_env(ParallelEnv):
             #if len(self.node_occupancy[current_pos]) > 1:  # detect overlap
                # print(f"[DEBUG] Overlap at node {current_pos}: {self.node_occupancy[current_pos]}")
 
-            route_id = [k for k, v in self.real_routes.items() if v == state["route"]]
-            if route_id:
-                rid = route_id[0]
+            rid = self.agent_route_id.get(agent, "unknown")
+            if rid != "unknown":
                 self.route_last_move_time[rid] = self.agent_times[agent]
 
             # === End-of-day to agents, putting the finished status ===
@@ -1083,6 +1104,7 @@ class parallel_env(ParallelEnv):
             normalized_travel_time = min(tt_next / self.max_travel_time, 1.0)
 
             occ_risk = self._compute_occ_risk_for_agent(agent, horizon=self.risk_horizon_steps)
+            leader_gap, follower_gap = self._compute_pairwise_headway_gaps(agent)
 
             # === Observation update ===
             if state.get("status") != "active":
@@ -1102,6 +1124,8 @@ class parallel_env(ParallelEnv):
                 self.node_to_idx[str(next_node)],
                 1.0 if is_raining else 0.0,
                 occ_risk,
+                self._normalize_headway_gap(leader_gap),
+                self._normalize_headway_gap(follower_gap),
             ], dtype=np.float32)
 
             observations[agent] = np.clip(
@@ -1122,9 +1146,20 @@ class parallel_env(ParallelEnv):
             truncations[agent] = False
             infos[agent] = {"status": "active"}
 
+            if self.record_replay:
+                self.replay_log.append({
+                    "sim_time_sec": self.agent_times[agent],
+                    "agent_id": agent,
+                    "route_id": rid,
+                    "curr_node": curr_node,
+                    "next_node": next_node,
+                    "action": int(action),
+                    "occupancy": float(state["occupancy"]),
+                    "waiting": float(self.stop_waiting_passengers.get((rid, curr_node), 0.0)),
+                })
+
             # Update route leader dynamically
-            if route_id:
-                rid = route_id[0]
+            if rid != "unknown":
                 leader = self.route_leader.get(rid)
                 if leader is None or self.agent_times[agent] > self.agent_times.get(leader, 0.0):
                     self.route_leader[rid] = agent
@@ -1217,7 +1252,10 @@ class parallel_env(ParallelEnv):
                 print(f"Episode Mean Objectives: {episode_mean.round(3)}") # occupancy_score, uptime_score, sync_score and efficiency_score
                 print(f"Episode % Ideal Occupancy: {pct_ideal_occupancy_day:.1f}%")
                 print("==============================")
-            
+
+            if self.record_replay:
+                self._flush_replay_log()
+
             self.day_done = True
             self.agents_finished_previous_day = True
         else:
@@ -1263,7 +1301,9 @@ class parallel_env(ParallelEnv):
                 0.0,    # curr_node_id
                 0.0,    # next_node_id
                 0.0,    # is_raining (0 ou 1)
-                0.0     # occ_risk_out
+                0.0,    # occ_risk_out
+                -1.0,   # headway_leader_norm (signed: <0 bunched up, >0 gap too large)
+                -1.0,   # headway_follower_norm
             ], dtype=np.float32),
             high=np.array([
                 1.0,    # time_of_day_norm
@@ -1275,7 +1315,9 @@ class parallel_env(ParallelEnv):
                 2e9,    # curr_node_id
                 2e9,    # next_node_id
                 1.0,    # is_raining (0 ou 1)
-                1.0     # occ_risk_out
+                1.0,    # occ_risk_out
+                1.0,    # headway_leader_norm
+                1.0,    # headway_follower_norm
             ], dtype=np.float32)
         )
 
@@ -1368,7 +1410,198 @@ class parallel_env(ParallelEnv):
                 out_count += 1
 
         return float(out_count) / float(H)
-    
+
+    # ------------------------------------------------------------------
+    # Real passenger flow lookup (generate_passenger_flow_stats.py) +
+    # per-(route, stop) queue helpers
+    # ------------------------------------------------------------------
+    def _get_flow_stats(self, route_id: str, node, now_time: float, going_forward: bool = True) -> dict:
+        """
+        Cascading fallback into self.passenger_flow_stats, from most to least specific:
+          1) by_route_stop_hour  (route+stop+hour of day)
+          2) by_route_stop       (route+stop, all hours pooled)
+          3) by_stop_hour        (stop+hour, pooled across every route serving it)
+          4) by_stop              (stop, all routes/hours pooled)
+          5) global               (last-resort scalar)
+
+        Levels 1-2 (route-specific) are only used when going_forward=True: the
+        historical OD data only ever recorded the direction a trip_id actually
+        drove. The simulated "bounce back" leg (going_forward=False) retraces
+        that same node list in reverse, which has no real-world counterpart —
+        using the forward route's stats for it would misrepresent a path no
+        real bus ever drove, so the backward leg falls back straight to the
+        stop-level pools instead.
+        """
+        stats = getattr(self, "passenger_flow_stats", None)
+        node = str(node)
+        hour = int((now_time // 3600) % 24)
+        min_count = int(stats.get("min_bucket_count", 1)) if stats else 1
+
+        result = {"mean_boardings": None, "mean_alight_frac": None, "mean_intervisit_sec": None}
+
+        def _fill(entry):
+            # Skip buckets with too few real samples to trust as a mean estimate —
+            # they fall through to the next, broader level instead.
+            if not entry or entry.get("count", 0) < min_count:
+                return
+            for k in result:
+                if result[k] is None and entry.get(k) is not None:
+                    result[k] = entry[k]
+
+        if stats:
+            if going_forward:
+                _fill(stats.get("by_route_stop_hour", {}).get((route_id, node, hour)))
+                _fill(stats.get("by_route_stop", {}).get((route_id, node)))
+
+            _fill(stats.get("by_stop_hour", {}).get((node, hour)))
+            _fill(stats.get("by_stop", {}).get(node))
+
+            g = stats.get("global", {})
+        else:
+            g = {}
+
+        if result["mean_boardings"] is None:
+            result["mean_boardings"] = g.get("mean_boardings", 1.0)
+        if result["mean_alight_frac"] is None:
+            result["mean_alight_frac"] = g.get("mean_alight_frac", 0.2)
+        if result["mean_intervisit_sec"] is None:
+            result["mean_intervisit_sec"] = g.get("mean_intervisit_sec", 600.0)
+
+        return result
+
+    def _get_arrival_rate(self, route_id: str, node, now_time: float, going_forward: bool = True) -> float:
+        """Passengers/second accumulating at this (route, stop) between bus visits."""
+        flow = self._get_flow_stats(route_id, node, now_time, going_forward)
+        intervisit = max(float(flow["mean_intervisit_sec"]), 1.0)
+        return max(0.0, float(flow["mean_boardings"])) / intervisit
+
+    def _get_alight_frac(self, route_id: str, node, now_time: float, going_forward: bool = True) -> float:
+        """Fraction of onboard passengers that alight when a bus reaches this stop."""
+        flow = self._get_flow_stats(route_id, node, now_time, going_forward)
+        return float(np.clip(flow["mean_alight_frac"], 0.0, 1.0))
+
+    def _initial_queue_estimate(self, route_id: str, node, now_time: float, going_forward: bool = True) -> float:
+        """
+        Seed value for a (route, stop) queue the first time it's touched in a
+        simulated day. Using the historical mean-boardings-per-visit (rather than
+        0) avoids an artificially empty queue for the very first bus of the day,
+        since that historical average is itself already conditioned on a bus
+        periodically servicing the stop.
+        """
+        flow = self._get_flow_stats(route_id, node, now_time, going_forward)
+        return max(0.0, float(flow["mean_boardings"]))
+
+    # ------------------------------------------------------------------
+    # Pairwise headway (agent coordination / synchronization)
+    # ------------------------------------------------------------------
+    def _route_loop_position(self, agent: str):
+        """
+        Linearizes a bouncing route into a single monotonic "conveyor belt"
+        coordinate over one round trip (0..loop_len-1), so that two agents on
+        the same route can be compared by position regardless of direction.
+        """
+        state = self.agent_states.get(agent)
+        if not state:
+            return None, 0
+        route_length = len(state["route"])
+        if route_length <= 1:
+            return 0, 1
+        idx = state["route_idx"]
+        going_forward = state.get("going_forward", True)
+        loop_len = 2 * (route_length - 1)
+        pos = idx if going_forward else (loop_len - idx)
+        return pos, loop_len
+
+    def _compute_pairwise_headway_gaps(self, agent: str):
+        """
+        Returns (leader_gap, follower_gap): the simulated-time gap (seconds) to
+        the immediate preceding bus (leader, ahead on the route loop) and the
+        immediate following bus (follower, behind), among other ACTIVE agents
+        sharing this agent's route. Returns None for a side with no active peer.
+
+        This replaces the population-wide RMS-of-all-recent-arrivals headway
+        metric (self.headways / _sync_component) with a signal that is specific
+        to THIS agent's own gap to its neighbors, which is what an agent can
+        actually act on to avoid bunching or closing an excessive gap.
+        """
+        route_id = self.agent_route_id.get(agent)
+        if not route_id or route_id == "unknown":
+            return None, None
+
+        my_pos, loop_len = self._route_loop_position(agent)
+        if my_pos is None or loop_len <= 0:
+            return None, None
+
+        peers = [
+            a for a in self.possible_agents
+            if a != agent
+            and self.agent_route_id.get(a) == route_id
+            and self.agent_states.get(a, {}).get("status") == "active"
+        ]
+        if not peers:
+            return None, None
+
+        best_ahead = None   # smallest positive (peer_pos - my_pos) mod loop_len -> leader
+        best_behind = None  # smallest positive (my_pos - peer_pos) mod loop_len -> follower
+
+        for peer in peers:
+            peer_pos, peer_loop_len = self._route_loop_position(peer)
+            if peer_pos is None or peer_loop_len != loop_len:
+                continue
+
+            ahead_delta = (peer_pos - my_pos) % loop_len
+            behind_delta = (my_pos - peer_pos) % loop_len
+
+            # Note: >= 0, not > 0 — a peer at the EXACT same position (delta == 0) is the
+            # maximum-bunching case (two buses literally at the same stop) and must count
+            # as both "ahead" and "behind" with a zero gap, not be treated as "no peer".
+            if ahead_delta >= 0 and (best_ahead is None or ahead_delta < best_ahead[0]):
+                best_ahead = (ahead_delta, peer)
+            if behind_delta >= 0 and (best_behind is None or behind_delta < best_behind[0]):
+                best_behind = (behind_delta, peer)
+
+        my_time = self.agent_times.get(agent, 0.0)
+        leader_gap = None
+        follower_gap = None
+        if best_ahead is not None:
+            leader_gap = abs(my_time - self.agent_times.get(best_ahead[1], my_time))
+        if best_behind is not None:
+            follower_gap = abs(my_time - self.agent_times.get(best_behind[1], my_time))
+
+        return leader_gap, follower_gap
+
+    def _normalize_headway_gap(self, gap) -> float:
+        """
+        Signed, normalized headway-gap feature for the observation space:
+        0.0 = on the target headway (or no known peer -> neutral/"assume on
+        schedule"), negative = bunched up (gap smaller than target), positive
+        = larger gap than target. Clipped to [-1, 1].
+        """
+        if gap is None:
+            return 0.0
+        target = float(getattr(self.reward, "target_headway", 600.0))
+        max_headway = 1800.0
+        return float(np.clip((gap - target) / max_headway, -1.0, 1.0))
+
+    # ------------------------------------------------------------------
+    # Replay logging (game-like map visualization)
+    # ------------------------------------------------------------------
+    def _flush_replay_log(self):
+        """Writes the accumulated per-step replay log for the finished day to disk."""
+        if not self.replay_log:
+            return
+        os.makedirs(self.replay_output_dir, exist_ok=True)
+        fname = f"replay_ep{self.episode_counter}_{self.date}.json"
+        out_path = os.path.join(self.replay_output_dir, fname)
+        try:
+            import json
+            with open(out_path, "w") as f:
+                json.dump(self.replay_log, f)
+            print(f"[REPLAY] Saved {len(self.replay_log)} events to {out_path}")
+        except Exception as e:
+            print(f"[REPLAY] Failed to save replay log: {e}")
+        self.replay_log = []
+
     def generate_random_delay(self, start, target):
         try:
             # Finds the shortest path between the start and target
@@ -1692,12 +1925,17 @@ class DefaultReward(RewardBaseClass):
         # self.waitTimeDict can be used if needed for other metrics
         self.waitTimeDict = waitTimeDict or {}
 
-        # Adjustable weights (sum doesn't need to be 1; we do weighted average)
+        # Adjustable weights (sum doesn't need to be 1; we do weighted average).
+        # Previously uptime_bonus/sync_score/energy_efficiency defaulted to 0.0 and no
+        # training script overrode them, so the "compound" reward this class documents
+        # was in practice 100% occupancy_score. Defaulting all four components to equal
+        # weight restores the intended multi-objective signal (including making the
+        # headway-synchronization term below actually reach the policy gradient).
         self.reward_weights = reward_weights or {
-            "occ_penalty": 1.0,        # less than 1 to not dominate
-            "uptime_bonus": 0.0,
-            "sync_score": 0.0,         
-            "energy_efficiency": 0.0
+            "occ_penalty": 1.0,
+            "uptime_bonus": 1.0,
+            "sync_score": 1.0,
+            "energy_efficiency": 1.0
         }
 
         self.occupancy_range = occupancy_range
@@ -1760,6 +1998,28 @@ class DefaultReward(RewardBaseClass):
 
         # Convert to "score" in [0,1], where 1 is good
         return 1.0 - rel
+
+    def _pairwise_sync_component(self, leader_gap, follower_gap) -> float:
+        """
+        Headway-regularity score in [0, 1] based on THIS agent's own gap to its
+        immediate leader/follower on the route (see
+        parallel_env._compute_pairwise_headway_gaps), rather than the population-wide
+        RMS of every recent arrival used by _sync_component. This is what actually
+        drives the coordination signal into scalarize()/getObjectives() below; a
+        neutral 0.5 is returned when no active peer is known on either side (e.g. a
+        route currently has only one active bus), since we have no basis to judge
+        bunching/gaps in that case.
+        """
+        gaps = [g for g in (leader_gap, follower_gap) if g is not None]
+        if not gaps:
+            return 0.5
+
+        scores = []
+        for gap in gaps:
+            rel = min(1.0, abs(gap - self.target_headway) / (self.max_sync_rel_std * self.target_headway + 1e-8))
+            scores.append(1.0 - rel)
+
+        return float(np.mean(scores))
 
     def _efficiency_component(self, estimated_time: float, expected_time: float) -> float:
         """
@@ -2014,7 +2274,14 @@ class DefaultReward(RewardBaseClass):
             occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
-        sync = self._sync_component(headways or [])
+        # Population-level RMS metric, kept only as a secondary debug diagnostic —
+        # NOT what feeds scalarize() below (see _pairwise_sync_component).
+        _sync_population_debug = self._sync_component(headways or [])
+
+        leader_gap, follower_gap = (None, None)
+        if hasattr(self, "env") and self.env is not None:
+            leader_gap, follower_gap = self.env._compute_pairwise_headway_gaps(agent)
+        sync = self._pairwise_sync_component(leader_gap, follower_gap)
 
         # registra pra métrica de fim de episódio
         if hasattr(self, "env") and self.env is not None:

@@ -86,6 +86,9 @@ class RLlibSuntBus(MultiAgentEnv):
         uptime_normalized = load_pickle("uptime_normalized.pkl")
         real_routes = load_pickle("real_routes.pkl")
         route_metadata = load_pickle("route_metadata.pkl")
+        passenger_flow_stats = load_pickle("stop_passenger_flow.pkl")
+
+        env_config = env_config or {}
 
         # Create parallel env
         self.env = parallel_env(
@@ -102,8 +105,11 @@ class RLlibSuntBus(MultiAgentEnv):
             uptime_normalized=uptime_normalized,
             real_routes=real_routes,
             route_metadata=route_metadata,
+            passenger_flow_stats=passenger_flow_stats,
             occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm"
-            reward_raining_type = "normal" # normal | penalization | bonus
+            reward_raining_type = "normal", # normal | penalization | bonus
+            record_replay=env_config.get("record_replay", False),
+            replay_output_dir=env_config.get("replay_output_dir"),
         )
 
         # Supersuit wrappers
