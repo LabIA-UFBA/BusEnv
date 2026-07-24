@@ -24,5 +24,6 @@ src/training_observation/real_routes.pkl
 replays/
 0runs
 1runs
+metrics
 paretoMeans
 politicas

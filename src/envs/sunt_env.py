@@ -286,8 +286,11 @@ class parallel_env(ParallelEnv):
             "20002_1367_5":  ["agent_20", "agent_21", "agent_22", "agent_23", "agent_24"],
         }
 
+        # Element of the new reward with the occupancy
+        self.farf_prediction_steps = 3      # n - How many steps i am going to predict
+
         self.debug_quantum = False   # DEBUG MODE ON
-        self.debug = True   
+        self.debug = False   
 
 
 
@@ -753,7 +756,7 @@ class parallel_env(ParallelEnv):
                     # =====================================================
                     # Prediction-based occupancy (Quantum / TimesFM / etc.)
                     # Unchanged: still driven by the static occupancy_rate override
-                    # built by _override_occupancy_with_predictions_node_level().
+                    # built by _override_occupancy_with_predictions_node_level()
                     # =====================================================
                     if curr_node in self.occupancy_rate:
                         occupancy = self.occupancy_rate[curr_node]
@@ -822,6 +825,18 @@ class parallel_env(ParallelEnv):
                         )
 
                 state["occupancy"] = occupancy
+
+                # Future occupancies always come from the configured occupancy source.
+                # Depending on occupancy_source this dictionary may contain:
+                #   - real historical occupancy (SUNT)
+                #   - Quantum predictions
+                #   - LSTM predictions
+                #   - TimesFM predictions
+                state["predicted_occupancies"] = self._get_future_occupancies(
+                    agent=agent,
+                    route=route,
+                    current_occupancy=occupancy
+                )
                 # state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
                 travel_time_hors = travel_time / (12 * 3600) 
                 old = state["uptime"] 
@@ -1270,11 +1285,11 @@ class parallel_env(ParallelEnv):
         #    f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
         #    f"| Done flag: {all_parked}")
 
-        if self.episode_step_counter % 100 == 0:
+        if self.episode_step_counter % 100 == 0 and self.debug:
             for a, obs in observations.items():
                 print(f"[OBS SNAPSHOT][{a}] {obs}")
 
-        if self.episode_step_counter % 50 == 0:
+        if self.episode_step_counter % 50 == 0 and self.debug:
             print("\n[STEP SUMMARY]")
             for a in self.possible_agents:
                 print(
@@ -1602,47 +1617,6 @@ class parallel_env(ParallelEnv):
             print(f"[REPLAY] Failed to save replay log: {e}")
         self.replay_log = []
 
-    def generate_random_delay(self, start, target):
-        try:
-            # Finds the shortest path between the start and target
-            shortest_path = nx.shortest_path(self.network, source=start, target=target, weight='weight')
-            path_edges = list(zip(shortest_path, shortest_path[1:])) # Creates a list of edges from the shortest path
-            total_time = 0
-
-            if not path_edges:
-                return  # No edges to delay
-
-            # Calculates total time of the edges in the path
-            for a, b in path_edges:
-                a, b = str(a), str(b)
-                edge_key = (min(a, b), max(a, b)) # Sorts the nodes of the edge to avoid duplication
-                if edge_key in self.reward.waitTimeDict:
-                    edge_time = self.reward.waitTimeDict[edge_key][0]
-                    total_time += edge_time # Sums the waiting time of the edge
-                else:
-                    x = 0 
-                    #print(f"[AVISO] Aresta {edge_key} não está no waitTimeDict!")
-
-            average_time = total_time / len(path_edges)
-            #print(f"Média de tempo das arestas do caminho ótimo: {average_time}")
-
-            # Chooses a random edge in the path to apply the delay
-            delay_u, delay_v = random.choice(path_edges)
-            delay_u, delay_v = str(delay_u), str(delay_v) # Sorts the nodes of the edge to avoid duplication
-            delay_edge_key = (min(delay_u, delay_v), max(delay_u, delay_v)) # Chosen edge for delay
-
-            if delay_edge_key in self.reward.waitTimeDict: # Checks if the chosen edge is in waitTimeDict
-                delay = average_time * 5  # Simulates heavy congestion
-                self.dynamicDelays = {
-                    delay_edge_key: delay # Chosen edge for delay with applied delay time
-                }
-                #print(f"Aresta atrasada: {delay_edge_key}, atraso aplicado: {delay}")
-            else:
-                #print(f"[ERRO] Aresta escolhida para atraso {delay_edge_key} não está no waitTimeDict.")
-                self.dynamicDelays = {}
-
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            self.dynamicDelays = {}
 
     def get_nearest_service_center(self, current_node):
         # Finds the nearest service center node, not dynamic yet
@@ -1894,7 +1868,61 @@ class parallel_env(ParallelEnv):
             f"source={self.occupancy_source} | "
             f"nodes_updated={overridden_nodes}"
         )
+    
+    def _get_future_occupancies(self, agent, route, current_occupancy):
+        """
+        Returns the predicted occupancy for the next N stops in the
+        direction the bus is currently traveling.
 
+        Parameters
+        ----------
+        agent : str
+            Agent id.
+
+        route : list
+            Complete route of the agent.
+
+        current_occupancy : float
+            Used as fallback if a future node has no prediction.
+
+        Returns
+        -------
+        list[float]
+            Occupancies for the next N stops.
+        """
+
+        future_occupancies = []
+
+        lookahead = self.farf_prediction_steps
+
+        state = self.agent_states[agent]
+        current_idx = state["route_idx"]
+        going_forward = state.get("going_forward", True)
+
+        for step in range(1, lookahead + 1):
+
+            if going_forward:
+                future_idx = current_idx + step
+            else:
+                future_idx = current_idx - step
+
+            # chegou ao fim da rota
+            if future_idx < 0 or future_idx >= len(route):
+                break
+
+            future_node = route[future_idx]
+
+            future_occ = self.occupancy_rate.get(
+                future_node,
+                current_occupancy
+            )
+
+            future_occupancies.append(float(future_occ))
+
+        while len(future_occupancies) < lookahead:
+            future_occupancies.append(current_occupancy)
+        
+        return future_occupancies
 
 # This is the base class for reward classes
 class RewardBaseClass():
@@ -1933,15 +1961,34 @@ class DefaultReward(RewardBaseClass):
         # headway-synchronization term below actually reach the policy gradient).
         self.reward_weights = reward_weights or {
             "occ_penalty": 1.0,
-            "uptime_bonus": 1.0,
-            "sync_score": 1.0,
-            "energy_efficiency": 1.0
+            "uptime_bonus": 0.0,
+            "sync_score": 0.0,
+            "energy_efficiency": 0.0
         }
 
         self.occupancy_range = occupancy_range
         self.target_headway = float(target_headway_seconds)
         self.max_sync_rel_std = float(max_sync_rel_std)
         self.softmin_temperature = float(softmin_temperature)
+
+        # =====================================================
+        # FARF occupancy reward parameters
+        # =====================================================
+
+        self.farf_prediction_steps = 3      # Number of future stops considered
+        self.farf_gamma = 0.8               # Discount factor
+
+        weights = [
+            self.farf_gamma ** i
+            for i in range(self.farf_prediction_steps + 1)
+        ]
+
+        weight_sum = sum(weights)
+
+        self.farf_alphas = [
+            w / weight_sum
+            for w in weights
+        ]
 
     def _occ_component(self, occupancy: float) -> float:
         """
@@ -1957,6 +2004,57 @@ class DefaultReward(RewardBaseClass):
         if occupancy > max_occ:
             return min(1.0, (occupancy - max_occ) ** 2 / ((1.0 - max_occ) ** 2 + 1e-8))
         return 0.0
+
+
+    def _occupation_factor(
+        self,
+        occupancy: float,
+        desired_occ: float = 0.75,
+        delta: float = 0.15,
+        p: float = 0.10,
+        overcrowding_scale: float = 2.0
+    ):
+        """
+        FARF occupation factor Θ(x).
+
+        Returns:
+            [-s*k , 1]
+        """
+
+        g = np.exp(-((occupancy - desired_occ) ** 2) / (2 * p ** 2))
+
+        k = np.exp(-(delta ** 2) / (2 * p ** 2))
+
+        if occupancy < desired_occ - delta:
+            return g - k
+
+        elif occupancy > desired_occ + delta:
+            return overcrowding_scale * (g - k)
+
+        else:
+            return (g - k) / (1.0 - k)
+
+    def _farf_occupancy_reward(
+        self,
+        current_occ,
+        predicted_occupancies
+    ):
+        """
+        Computes
+
+            R = Σ a_i Θ_i
+
+        """
+
+        values = [current_occ] + predicted_occupancies
+
+        reward = 0.0
+
+        for alpha, occ in zip(self.farf_alphas, values):
+
+            reward += alpha * self._occupation_factor(occ)
+
+        return reward
 
     def _sync_component(self, headways: list) -> float:
         """
@@ -2270,10 +2368,27 @@ class DefaultReward(RewardBaseClass):
         occupancy = 0.0 
 
         if agent_state is not None:
+
+            # OLD LOGIC FOR THE OCCUPATION 
+
             occupancy = float(agent_state.get("occupancy", 0.0))
             occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
+
+            # NEW LOGIC FOR THE OCCUPATION 
+            #occupancy = agent_state["occupancy"]
+
+            #predicted = agent_state.get("predicted_occupancies", [])
+
+            #occ_score = self._farf_occupancy_reward(
+            #    occupancy,
+            #    predicted
+            #)
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
+    
+                
+        
+        
         # Population-level RMS metric, kept only as a secondary debug diagnostic —
         # NOT what feeds scalarize() below (see _pairwise_sync_component).
         _sync_population_debug = self._sync_component(headways or [])

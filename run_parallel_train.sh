@@ -31,7 +31,7 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("mappo" "hatrpo" "itrpo")
+algos=("ia2c" "itrpo" "ippo")
 
 # Funcionaram 100%
 # IA2C 
