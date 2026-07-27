@@ -1,0 +1,7 @@
+metric,method,win_pct
+mse,naive,66.47
+mse,timesfm,33.53
+mae,timesfm,74.25
+mae,naive,25.75
+mape_pct,timesfm,64.94
+mape_pct,naive,35.06

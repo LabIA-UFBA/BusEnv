@@ -1,0 +1,4 @@
+metric,method,win_pct
+mse,timesfm,100.0
+mae,timesfm,100.0
+mape_pct,timesfm,100.0

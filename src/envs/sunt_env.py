@@ -173,6 +173,8 @@ class parallel_env(ParallelEnv):
 
         self.prediction_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/prediction") # Prediction data path loading
 
+        self.rates_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/exports_rates")
+
         self.quantum_routes = [
             "20001_310_1",
             "20001_310_2",
@@ -752,6 +754,86 @@ class parallel_env(ParallelEnv):
                 # Update occupancy
                 prev_occ = state.get("occupancy", 0.0)
 
+                if self.occupancy_source == "real":
+                    # =====================================================
+                    # Real occupancy based on SUNT Historic: per-(route, stop) passenger QUEUE.
+                    #
+                    # Boarding/alighting happens when the bus ARRIVES at next_node (not
+                    # when it departs curr_node, which the previous implementation used).
+                    # The queue accumulates passengers between visits at a real arrival
+                    # rate (pax/sec, derived from historical boardings-per-visit divided
+                    # by the historical inter-visit time) and DEPLETES when a bus boards —
+                    # this is what makes a second bus passing 1 minute after the first see
+                    # a near-empty queue instead of the same static value.
+                    # =====================================================
+                    now_time = self.agent_times[agent]
+                    arrival_rate = self._get_arrival_rate(route_id, next_node, now_time, going_forward)
+                    alight_frac = self._get_alight_frac(route_id, next_node, now_time, going_forward)
+                elif self.occupancy_source in ("timesfm", "naive"):
+                    # =====================================================
+                    # Prediction-based occupancy (Quantum / TimesFM / etc.)
+                    # =====================================================
+                    now_time = self.agent_times[agent]
+                    arrival_rate = self._get_predicted_arrival_rate(route_id, next_node, now_time, going_forward)
+                    alight_frac = self._get_predicted_alight_frac(route_id, next_node, now_time, going_forward)
+                else:
+                    arrival_rate = alight_frac = None  # quantum: ramo antigo abaixo
+
+                if np.random.rand() < 0.02 and self.debug:
+                    print(
+                        f"[RATE SOURCE] source={self.occupancy_source} | "
+                        f"route={route_id} | node={next_node} | "
+                        f"arrival_rate={arrival_rate:.5f} | alight_frac={alight_frac:.3f}"
+                    )
+                
+                if arrival_rate is not None:
+                    qkey = (route_id, next_node)
+
+                    if qkey not in self.stop_waiting_passengers:
+                        queue = self._initial_queue_estimate(route_id, next_node, now_time, going_forward)
+                    else:
+                        last_t = self.last_stop_update_time.get(qkey, now_time)
+                        elapsed = max(0.0, now_time - last_t)
+                        queue = self.stop_waiting_passengers[qkey] + arrival_rate * elapsed
+
+                    prev_onboard = prev_occ * self.max_capacity
+                    alighting = prev_onboard * alight_frac
+                    onboard_after_alighting = max(0.0, prev_onboard - alighting)
+                    remaining_capacity = max(0.0, self.max_capacity - onboard_after_alighting)
+                    boarding = min(queue, remaining_capacity)
+
+                    self.stop_waiting_passengers[qkey] = max(0.0, queue - boarding)
+                    self.last_stop_update_time[qkey] = now_time
+
+                    occupancy = max(0.0, min((onboard_after_alighting + boarding) / self.max_capacity, 1.0))
+
+                    if np.random.rand() < 0.05 and self.debug:
+                        print(
+                            f"[QUEUE] route={route_id} node={next_node} "
+                            f"prev_occ={prev_occ:.3f} queue_before_board={queue:.2f} "
+                            f"boarded={boarding:.2f} alighted={alighting:.2f} "
+                            f"queue_after={self.stop_waiting_passengers[qkey]:.2f} "
+                            f"new_occ={occupancy:.3f}"
+                        )
+                else:
+                    if curr_node in self.occupancy_rate:
+                        occupancy = max(0.0, min(self.occupancy_rate[curr_node], 1.0))
+                        if self.debug_quantum and self.episode_step_counter % 50 == 0:
+                            print(
+                                f"🧪 [Quantum-OCC USED] "
+                                f"day={self.current_day_index} | "
+                                f"step={self.episode_step_counter} | "
+                                f"agent={agent} | "
+                                f"node={curr_node} | "
+                                f"Quantum_occ={occupancy:.4f} | "
+                                f"source={self.occupancy_source}"
+                            )
+                    else:
+                        occupancy = prev_occ
+                  
+                """
+                CODIGO ANTIGO ONDE SO OS DADOS DO SUNT TEM A LOGICA DE DESOCUPAÇÃO
+
                 if self.occupancy_source != "real":
                     # =====================================================
                     # Prediction-based occupancy (Quantum / TimesFM / etc.)
@@ -823,6 +905,7 @@ class parallel_env(ParallelEnv):
                             f"queue_after={self.stop_waiting_passengers[qkey]:.2f} "
                             f"new_occ={occupancy:.3f}"
                         )
+                """
 
                 state["occupancy"] = occupancy
 
@@ -956,6 +1039,14 @@ class parallel_env(ParallelEnv):
                     is_raining=is_raining,
                     reward_type=self.reward_type,
                     last_rain_eff=self.last_rain_eff.get(agent, 0.0)
+                )
+
+                print(
+                    f"[OBJECTIVE APPEND] "
+                    f"{agent} "
+                    f"time={self.agent_times[agent]:.0f} "
+                    f"step={self.steps[agent]} "
+                    f"len_before={len(self.episode_objectives[agent])}"
                 )
 
                 self.episode_objectives[agent].append(vector)
@@ -1196,10 +1287,27 @@ class parallel_env(ParallelEnv):
             pct_ideal_occupancy_per_agent = []
             for a in self.possible_agents:
                 print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
+
+                print("=" * 60)
+                print(a)
+                print("episode_objectives len =", len(self.episode_objectives[a]))
+
+                for i, obj in enumerate(self.episode_objectives[a][:5]):
+                    print(i, obj, type(obj))
                 
                 vectors = np.array(self.episode_objectives[a]) # I take the episode values ​​for the metrics
-                total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
-                mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent
+
+                if len(vectors) == 0:
+                    total_objectives = np.zeros(4, dtype=np.float32)
+                    mean_objectives = np.zeros(4, dtype=np.float32)
+                else:
+                    total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
+                    mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent
+
+                print("vectors.shape =", vectors.shape)
+
+                #total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
+                #mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent
 
                 # NOVO: % of the steps that this agent spent within the ideal occupancy
                 occ_flags = np.array(self.episode_occupancy_ideal_flags[a])
@@ -1212,6 +1320,10 @@ class parallel_env(ParallelEnv):
                 infos[a]["status"] = "finished"
                 infos[a]["reason"] = "24h_limit"
 
+                print("mean_objectives =", mean_objectives)
+                print(type(mean_objectives))
+                print(np.shape(mean_objectives))
+                
                 episode_vectors.append(mean_objectives)
 
                 if self.debug:
@@ -1495,6 +1607,22 @@ class parallel_env(ParallelEnv):
         flow = self._get_flow_stats(route_id, node, now_time, going_forward)
         return float(np.clip(flow["mean_alight_frac"], 0.0, 1.0))
 
+    def _get_predicted_arrival_rate(self, route_id, node, now_time, going_forward=True):
+        hour = int((now_time // 3600) % 24)
+        entry = getattr(self, "predicted_flow_stats", {}).get((route_id, str(node), hour))
+        if entry is None or entry.get("boardings_per_min") is None:
+            return 0.0
+        return max(0.0, float(entry["boardings_per_min"])) / 60.0  # pax/min -> pax/seg
+
+
+    def _get_predicted_alight_frac(self, route_id, node, now_time, going_forward=True):
+        hour = int((now_time // 3600) % 24)
+        entry = getattr(self, "predicted_flow_stats", {}).get((route_id, str(node), hour))
+        if entry is None or entry.get("alighting_rate") is None:
+            return 0.2  # mesmo default do ramo real
+        return float(np.clip(entry["alighting_rate"], 0.0, 1.0))
+    
+    
     def _initial_queue_estimate(self, route_id: str, node, now_time: float, going_forward: bool = True) -> float:
         """
         Seed value for a (route, stop) queue the first time it's touched in a
@@ -1691,6 +1819,8 @@ class parallel_env(ParallelEnv):
             self._override_occupancy_with_predictions_node_level(
                 service_day=service_day
             )
+            if self.occupancy_source in ("timesfm", "naive"): # Pra ser usado só para essas novas fontes de dados
+                self._load_predicted_rates(service_day=service_day)
 
     def _load_mean_values(self):
         """ Always forces the environment to use only mean values """
@@ -1924,6 +2054,101 @@ class parallel_env(ParallelEnv):
         
         return future_occupancies
 
+    def _load_predicted_rates(self, service_day):
+        """
+        Loads per-(route, stop, hour) boarding-rate and alighting-rate predictions,
+        for occupancy_source in {"timesfm", "naive"} — the two sources that ship
+        exports_rates files. Quantum sources (quantum_qru/quantum_lstm) don't have
+        these files and keep using the older direct occupancy_rate override.
+
+        alighting uses the *ratio* column (alighting_per_veh / lag_loading_per_veh,
+        precomputed upstream) rather than the direct alighting-rate prediction —
+        per the data provider, predicting alighting and loading separately and then
+        dividing outperformed predicting the rate directly.
+
+        Populates self.predicted_flow_stats: dict[(route_id, stop_id, hour)] -> {
+            "boardings_per_min": float,
+            "alighting_rate": float,
+        }
+        """
+        print("🔥 LOADED PATCHED VERSION 🔥 ")
+        column_map = {
+            "timesfm": {"boardings": "y_pred_timesfm_boardings_per_min",
+                        "alighting": "y_pred_timesfm_ratio_alighting_rate"},
+            "naive":   {"boardings": "y_pred_naive_boardings_per_min",
+                        "alighting": "y_pred_naive_alighting_rate"},
+        }
+
+        cols = column_map.get(self.occupancy_source)
+        self.predicted_flow_stats = {}
+
+        if cols is None:
+            print(f"⚠️ [ENV] source={self.occupancy_source} has no rate files. Skipping rates load.")
+            return
+        if service_day is None:
+            print("⚠️ [ENV] No service_day found. Skipping predicted rates load.")
+            return
+
+        for route_id in self.prediction_routes:
+            route_dir = os.path.join(self.rates_data_path, route_id)
+            if not os.path.isdir(route_dir):
+                print(f"⚠️ [ENV] rates dir not found | route={route_id}")
+                continue
+
+            boardings_df = self._read_first_csv_matching(route_dir, "rates_boardings_per_min")
+            alighting_df = self._read_first_csv_matching(route_dir, "rates_alighting_rate")
+
+            if boardings_df is None or alighting_df is None:
+                print(f"⚠️ [ENV] Missing rate CSVs | route={route_id}")
+                continue
+
+            for df, col_key, dict_key in (
+                (boardings_df, cols["boardings"], "boardings_per_min"),
+                (alighting_df, cols["alighting"], "alighting_rate"),
+            ):
+                if col_key not in df.columns:
+                    print(f"⚠️ [ENV] Column {col_key} missing in file for route={route_id}")
+                    continue
+
+                day_df = df[df["service_day"] == service_day]
+                for _, row in day_df.iterrows():
+                    val = row.get(col_key)
+                    if pd.isna(val):
+                        continue
+                    stop_id = str(int(row["stop_id"]))
+                    hour = int(row["hour"])
+                    key = (route_id, stop_id, hour)
+                    self.predicted_flow_stats.setdefault(key, {})[dict_key] = float(val)
+
+        if np.random.rand() < 0.02 and self.debug:
+            for h in [2, 7, 12, 18, 22]:
+                real_vals = []
+                for route_id in self.prediction_routes:
+                    # pega um stop qualquer da rota pra comparar
+                    stop = self.real_routes[route_id][0]
+                    real_vals.append(self._get_flow_stats(route_id, stop, h*3600, True)["mean_alight_frac"])
+                pred_vals = [v["alighting_rate"] for (r, s, hh), v in self.predicted_flow_stats.items() if hh == h and "alighting_rate" in v]
+                print(f"hour={h:02d} | real_mean={np.mean(real_vals):.3f} | pred_mean={np.mean(pred_vals):.3f}")
+            
+            vals = [v["alighting_rate"] for v in self.predicted_flow_stats.values() if "alighting_rate" in v]
+            print(f"alight_frac: min={min(vals):.3f} max={max(vals):.3f} mean={np.mean(vals):.3f}")
+
+        print(
+            f"✅ [ENV] Predicted rates loaded | "
+            f"source={self.occupancy_source} | keys={len(self.predicted_flow_stats)}"
+        )
+
+
+    def _read_first_csv_matching(self, directory, prefix):
+        matches = [f for f in os.listdir(directory) if f.startswith(prefix) and f.endswith(".csv")]
+        if not matches:
+            return None
+        try:
+            return pd.read_csv(os.path.join(directory, matches[0]))
+        except Exception as e:
+            print(f"⚠️ [ENV] Failed to read {matches[0]}: {e}")
+            return None
+
 # This is the base class for reward classes
 class RewardBaseClass():
     def getReward(self, state, previousState, action, target, graph):
@@ -1977,6 +2202,12 @@ class DefaultReward(RewardBaseClass):
 
         self.farf_prediction_steps = 3      # Number of future stops considered
         self.farf_gamma = 0.8               # Discount factor
+        
+        # Occupation factor parameters
+        self.farf_desired_occ = 0.75
+        self.farf_delta = 0.15
+        self.farf_p = 0.10
+        self.farf_overcrowding_scale = 2.0
 
         weights = [
             self.farf_gamma ** i
@@ -2006,14 +2237,7 @@ class DefaultReward(RewardBaseClass):
         return 0.0
 
 
-    def _occupation_factor(
-        self,
-        occupancy: float,
-        desired_occ: float = 0.75,
-        delta: float = 0.15,
-        p: float = 0.10,
-        overcrowding_scale: float = 2.0
-    ):
+    def _occupation_factor(self, occupancy: float):
         """
         FARF occupation factor Θ(x).
 
@@ -2021,15 +2245,21 @@ class DefaultReward(RewardBaseClass):
             [-s*k , 1]
         """
 
-        g = np.exp(-((occupancy - desired_occ) ** 2) / (2 * p ** 2))
+        g = np.exp(
+            -((occupancy - self.farf_desired_occ) ** 2) /
+            (2 * self.farf_p ** 2)
+        )
 
-        k = np.exp(-(delta ** 2) / (2 * p ** 2))
+        k = np.exp(
+            -(self.farf_delta ** 2) /
+            (2 * self.farf_p ** 2)
+        )
 
-        if occupancy < desired_occ - delta:
+        if occupancy < self.farf_desired_occ - self.farf_delta:
             return g - k
 
-        elif occupancy > desired_occ + delta:
-            return overcrowding_scale * (g - k)
+        elif occupancy > self.farf_desired_occ + self.farf_delta:
+            return self.farf_overcrowding_scale * (g - k)
 
         else:
             return (g - k) / (1.0 - k)
@@ -2040,10 +2270,13 @@ class DefaultReward(RewardBaseClass):
         predicted_occupancies
     ):
         """
-        Computes
+        Computes the FARF occupancy reward.
 
-            R = Σ a_i Θ_i
+        R = Σ a_i · Θ_i
 
+        where:
+            a_i : normalized temporal weights
+            Θ_i : occupation factor for the current/future stop
         """
 
         values = [current_occ] + predicted_occupancies
@@ -2369,20 +2602,25 @@ class DefaultReward(RewardBaseClass):
 
         if agent_state is not None:
 
-            # OLD LOGIC FOR THE OCCUPATION 
-
+            # =====================================================
+            # OLD OCCUPANCY REWARD (Baseline)
+            # =====================================================
+            #
+            # occupancy = float(agent_state.get("occupancy", 0.0))
+            # occ_pen = self._occ_component(occupancy)
+            # occ_score = 1.0 - occ_pen # ESTAMOS INVERTENDO A PENALIDADE PARA QUE TUDO SEJA O MESMO SENTIDO, QUANTO MENOR PIOR 
+            # =====================================================
+            # NEW FARF OCCUPANCY REWARD
+            # =====================================================
             occupancy = float(agent_state.get("occupancy", 0.0))
-            occ_pen = self._occ_component(float(agent_state.get("occupancy", 0.0)))
 
-            # NEW LOGIC FOR THE OCCUPATION 
-            #occupancy = agent_state["occupancy"]
+            predicted = agent_state.get("predicted_occupancies", [])
 
-            #predicted = agent_state.get("predicted_occupancies", [])
-
-            #occ_score = self._farf_occupancy_reward(
-            #    occupancy,
-            #    predicted
-            #)
+            occ_score = self._farf_occupancy_reward(
+                occupancy,
+                predicted
+            )
+            # =====================================================
             uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
 
     
@@ -2400,8 +2638,27 @@ class DefaultReward(RewardBaseClass):
 
         # registra pra métrica de fim de episódio
         if hasattr(self, "env") and self.env is not None:
-            self.env.episode_occupancy_values[agent].append(occupancy)  # valor bruto, não occ_pen
-            self.env.episode_occupancy_ideal_flags[agent].append(1.0 if occ_pen == 0.0 else 0.0)
+
+            # Valor bruto de ocupação
+            self.env.episode_occupancy_values[agent].append(occupancy)
+
+            # =====================================================
+            # BASELINE
+            # =====================================================
+            # self.env.episode_occupancy_ideal_flags[agent].append(
+            #     1.0 if occ_pen == 0.0 else 0.0
+            # )
+
+            # =====================================================
+            # FARF
+            # =====================================================
+            inside_interval = (
+                abs(occupancy - self.farf_desired_occ) <= self.farf_delta
+            )
+
+            self.env.episode_occupancy_ideal_flags[agent].append(
+                1.0 if inside_interval else 0.0
+            )
 
         # --- Base efficiency ---
         eff = self._efficiency_component(float(estimated_time), float(expected_time))
@@ -2434,9 +2691,8 @@ class DefaultReward(RewardBaseClass):
 
         # transforma penalidade em score
 
-        occ_score = 1.0 - occ_pen # ESTAMOS INVERTENDO A PENALIDADE PARA QUE TUDO SEJA O MESMO SENTIDO, QUANTO MENOR PIOR 
-
-        assert 0 <= occ_score <= 1
+        # assert 0 <= occ_score <= 1 # OLD OCCUPANCY REWARD (Baseline)
+        assert -1.0 <= occ_score <= 1.0 # FARF occupancy reward may become negative.
         assert 0 <= uptime <= 1
         assert 0 <= sync <= 1
         assert 0 <= modified_eff <= 1

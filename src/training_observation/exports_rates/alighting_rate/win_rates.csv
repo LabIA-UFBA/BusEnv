@@ -1,0 +1,10 @@
+metric,method,win_pct
+mse,naive,47.11
+mse,timesfm-ratio,30.94
+mse,timesfm,21.96
+mae,timesfm,68.96
+mae,timesfm-ratio,22.55
+mae,naive,8.48
+mape_pct,naive,67.89
+mape_pct,timesfm-ratio,23.85
+mape_pct,timesfm,8.26

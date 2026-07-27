@@ -3,3 +3,590 @@ Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run1.log | metrics -> /mnt/
 Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run1.csv
 Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run1.csv
 ⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run2.csv
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run2.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run2.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run3.csv
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run3.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run3.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run4.csv
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run4.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run4.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run5.csv
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run5.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run5.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run1.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run1.csv
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run1.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run2.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run2.csv
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run2.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run3.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run3.csv
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run3.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run4.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run4.csv
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run4.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run5.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run5.csv
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run5.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: coma -> /mnt/ssd1/wesley/BusEnv/logs/coma_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_coma_run1.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run1.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run1.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run1.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run2.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run2.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run2.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run3.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run3.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run3.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run4.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run4.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run4.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run5.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run5.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run5.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run6.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run6.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run6.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run7.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run7.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run7.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run8.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run8.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run8.csv
+🚀 Iniciando rodada 1 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run9.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run10.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run11.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run11.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run12.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run12.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run13.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run13.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run14.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run15.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run15.csv
+⏳ Aguardando finalização da rodada 2...
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run16.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run17.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run17.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run18.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run18.csv
+⏳ Aguardando finalização da rodada 4...
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run6.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run7.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run6.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run9.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run6.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 4...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run7.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run10.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run7.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 4...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run8.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run11.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run11.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run8.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 4...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run9.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run12.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run12.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run9.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 4...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run10.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run13.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run13.csv
+Lançando: ippo -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ippo_run10.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+run_parallel_train.sh: line 97: one: command not found
+🏁 Todas as 4 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run6.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run6.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run6.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run7.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run7.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run7.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run8.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run8.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run8.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run9.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run9.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run9.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: itrpo -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_itrpo_run10.csv
+Lançando: hatrpo -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_hatrpo_run10.csv
+Lançando: matrpo -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_matrpo_run10.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run6.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run6.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run6.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run7.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run7.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run7.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run8.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run8.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run8.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run9.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run9.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run9.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run10.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run10.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run10.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run11.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run11.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run11.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run11.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run11.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run11.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run12.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run12.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run12.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run12.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run12.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run12.csv
+⏳ Aguardando finalização da rodada 2...
+✅ Rodada 2 concluída.
+🚀 Iniciando rodada 3 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run13.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run13.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run13.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run13.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run13.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run13.csv
+⏳ Aguardando finalização da rodada 3...
+✅ Rodada 3 concluída.
+🚀 Iniciando rodada 4 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run14.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run14.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run14.csv
+⏳ Aguardando finalização da rodada 4...
+✅ Rodada 4 concluída.
+🚀 Iniciando rodada 5 de 5...
+Lançando: happo -> /mnt/ssd1/wesley/BusEnv/logs/happo_run15.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_happo_run15.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run15.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run15.csv
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run15.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run15.csv
+⏳ Aguardando finalização da rodada 5...
+✅ Rodada 5 concluída.
+🏁 Todas as 5 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run16.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run16.csv
+⏳ Aguardando finalização da rodada 1...
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run17.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run17.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run18.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run18.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run19.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run19.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run20.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run20.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run21.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run21.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run22.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run22.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 1...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run23.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run23.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🏁 Todas as 1 rodadas foram executadas com sucesso!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+🚀 Iniciando rodada 1 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run16.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run14.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run16.csv
+⏳ Aguardando finalização da rodada 1...
+🚀 Iniciando rodada 1 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run16.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run14.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run14.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run16.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run16.csv
+⏳ Aguardando finalização da rodada 1...
+✅ Rodada 1 concluída.
+🚀 Iniciando rodada 2 de 5...
+Lançando: ia2c -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run17.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_ia2c_run17.csv
+Lançando: maa2c -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run15.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_maa2c_run15.csv
+Lançando: mappo -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run17.log | metrics -> /mnt/ssd1/wesley/BusEnv/metrics/episode_metrics_mappo_run17.csv
+⏳ Aguardando finalização da rodada 2...
+📋 Fila: 8 algoritmo(s) | 5 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'ia2c' (posição 0) — 5 runs em sequência
+🚀 [worker 1] lançando: ia2c (run16) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run16.log
+🧵 [worker 2] pegou algoritmo 'maa2c' (posição 1) — 5 runs em sequência
+🚀 [worker 2] lançando: maa2c (run14) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run14.log
+🧵 [worker 3] pegou algoritmo 'mappo' (posição 2) — 5 runs em sequência
+🚀 [worker 3] lançando: mappo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run16.log
+✅ [worker 1] ia2c (run16) concluído
+🚀 [worker 1] lançando: ia2c (run17) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run17.log
+✅ [worker 2] maa2c (run14) concluído
+🚀 [worker 2] lançando: maa2c (run15) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run15.log
+✅ [worker 3] mappo (run16) concluído
+🚀 [worker 3] lançando: mappo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run17.log
+✅ [worker 1] ia2c (run17) concluído
+🚀 [worker 1] lançando: ia2c (run18) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run18.log
+✅ [worker 2] maa2c (run15) concluído
+🚀 [worker 2] lançando: maa2c (run16) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run16.log
+✅ [worker 3] mappo (run17) concluído
+🚀 [worker 3] lançando: mappo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run18.log
+✅ [worker 1] ia2c (run18) concluído
+🚀 [worker 1] lançando: ia2c (run19) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run19.log
+✅ [worker 2] maa2c (run16) concluído
+🚀 [worker 2] lançando: maa2c (run17) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run17.log
+✅ [worker 1] ia2c (run19) concluído
+🚀 [worker 1] lançando: ia2c (run20) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run20.log
+✅ [worker 2] maa2c (run17) concluído
+🚀 [worker 2] lançando: maa2c (run18) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run18.log
+✅ [worker 3] mappo (run18) concluído
+🚀 [worker 3] lançando: mappo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run19.log
+✅ [worker 1] ia2c (run20) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'ia2c'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'ippo' (posição 3) — 5 runs em sequência
+🚀 [worker 1] lançando: ippo (run11) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run11.log
+✅ [worker 2] maa2c (run18) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'maa2c'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'hatrpo' (posição 4) — 5 runs em sequência
+🚀 [worker 2] lançando: hatrpo (run11) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run11.log
+✅ [worker 3] mappo (run19) concluído
+🚀 [worker 3] lançando: mappo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run20.log
+✅ [worker 1] ippo (run11) concluído
+🚀 [worker 1] lançando: ippo (run12) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run12.log
+✅ [worker 2] hatrpo (run11) concluído
+🚀 [worker 2] lançando: hatrpo (run12) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run12.log
+✅ [worker 3] mappo (run20) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'mappo'. Buscando próximo algoritmo...
+🧵 [worker 3] pegou algoritmo 'matrpo' (posição 5) — 5 runs em sequência
+🚀 [worker 3] lançando: matrpo (run11) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run11.log
+✅ [worker 1] ippo (run12) concluído
+🚀 [worker 1] lançando: ippo (run13) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run13.log
+✅ [worker 2] hatrpo (run12) concluído
+🚀 [worker 2] lançando: hatrpo (run13) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run13.log
+✅ [worker 3] matrpo (run11) concluído
+🚀 [worker 3] lançando: matrpo (run12) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run12.log
+✅ [worker 1] ippo (run13) concluído
+🚀 [worker 1] lançando: ippo (run14) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run14.log
+✅ [worker 2] hatrpo (run13) concluído
+🚀 [worker 2] lançando: hatrpo (run14) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run14.log
+✅ [worker 3] matrpo (run12) concluído
+🚀 [worker 3] lançando: matrpo (run13) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run13.log
+✅ [worker 1] ippo (run14) concluído
+🚀 [worker 1] lançando: ippo (run15) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run15.log
+✅ [worker 2] hatrpo (run14) concluído
+🚀 [worker 2] lançando: hatrpo (run15) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run15.log
+✅ [worker 3] matrpo (run13) concluído
+🚀 [worker 3] lançando: matrpo (run14) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run14.log
+✅ [worker 1] ippo (run15) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'ippo'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'happo' (posição 6) — 5 runs em sequência
+🚀 [worker 1] lançando: happo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run16.log
+✅ [worker 2] hatrpo (run15) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'hatrpo'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'itrpo' (posição 7) — 5 runs em sequência
+🚀 [worker 2] lançando: itrpo (run11) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run11.log
+✅ [worker 3] matrpo (run14) concluído
+🚀 [worker 3] lançando: matrpo (run15) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run15.log
+✅ [worker 1] happo (run16) concluído
+🚀 [worker 1] lançando: happo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run17.log
+✅ [worker 3] matrpo (run15) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'matrpo'. Buscando próximo algoritmo...
+🧵 [worker 3] fila esgotada, encerrando.
+✅ [worker 1] happo (run17) concluído
+🚀 [worker 1] lançando: happo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run18.log
+✅ [worker 1] happo (run18) concluído
+🚀 [worker 1] lançando: happo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run19.log
+✅ [worker 1] happo (run19) concluído
+🚀 [worker 1] lançando: happo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run20.log
+✅ [worker 1] happo (run20) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'happo'. Buscando próximo algoritmo...
+🧵 [worker 1] fila esgotada, encerrando.
+✅ [worker 2] itrpo (run11) concluído
+🚀 [worker 2] lançando: itrpo (run12) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run12.log
+📋 Fila: 1 algoritmo(s) | 3 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'itrpo' (posição 0) — 3 runs em sequência
+🚀 [worker 1] lançando: itrpo (run13) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run13.log
+🧵 [worker 2] fila esgotada, encerrando.
+🧵 [worker 3] fila esgotada, encerrando.
+✅ [worker 1] itrpo (run13) concluído
+🚀 [worker 1] lançando: itrpo (run14) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run14.log
+✅ [worker 1] itrpo (run14) concluído
+🚀 [worker 1] lançando: itrpo (run15) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run15.log
+✅ [worker 1] itrpo (run15) concluído
+🏁 [worker 1] terminou TODAS as 3 runs de 'itrpo'. Buscando próximo algoritmo...
+🧵 [worker 1] fila esgotada, encerrando.
+🏁 Todos os algoritmos (1) x 3 runs foram concluídos!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+run_parallel_train.sh: line 165: syntax error near unexpected token `('
+run_parallel_train.sh: line 165: `echo "🌱 CodeCarbon CSV: ${CC_OUTDIR}/emissions.csv (por padrão)"odeCarbon CSV: ${CC_OUTDIR}/emissions.csv (por padrão)"'
+📋 Fila: 8 algoritmo(s) | 5 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'ia2c' (posição 0) — 5 runs em sequência
+🚀 [worker 1] lançando: ia2c (run21) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run21.log
+🧵 [worker 2] pegou algoritmo 'maa2c' (posição 1) — 5 runs em sequência
+🚀 [worker 2] lançando: maa2c (run19) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run19.log
+🧵 [worker 3] pegou algoritmo 'mappo' (posição 2) — 5 runs em sequência
+🚀 [worker 3] lançando: mappo (run21) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run21.log
+✅ [worker 1] ia2c (run21) concluído
+🚀 [worker 1] lançando: ia2c (run22) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run22.log
+✅ [worker 2] maa2c (run19) concluído
+🚀 [worker 2] lançando: maa2c (run20) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run20.log
+✅ [worker 3] mappo (run21) concluído
+🚀 [worker 3] lançando: mappo (run22) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run22.log
+✅ [worker 1] ia2c (run22) concluído
+🚀 [worker 1] lançando: ia2c (run23) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run23.log
+✅ [worker 2] maa2c (run20) concluído
+🚀 [worker 2] lançando: maa2c (run21) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run21.log
+✅ [worker 3] mappo (run22) concluído
+🚀 [worker 3] lançando: mappo (run23) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run23.log
+✅ [worker 1] ia2c (run23) concluído
+🚀 [worker 1] lançando: ia2c (run24) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run24.log
+✅ [worker 2] maa2c (run21) concluído
+🚀 [worker 2] lançando: maa2c (run22) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run22.log
+✅ [worker 3] mappo (run23) concluído
+🚀 [worker 3] lançando: mappo (run24) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run24.log
+✅ [worker 1] ia2c (run24) concluído
+🚀 [worker 1] lançando: ia2c (run25) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run25.log
+✅ [worker 2] maa2c (run22) concluído
+🚀 [worker 2] lançando: maa2c (run23) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run23.log
+✅ [worker 3] mappo (run24) concluído
+🚀 [worker 3] lançando: mappo (run25) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run25.log
+✅ [worker 1] ia2c (run25) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'ia2c'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'ippo' (posição 3) — 5 runs em sequência
+🚀 [worker 1] lançando: ippo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run16.log
+✅ [worker 2] maa2c (run23) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'maa2c'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'hatrpo' (posição 4) — 5 runs em sequência
+🚀 [worker 2] lançando: hatrpo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run16.log
+✅ [worker 3] mappo (run25) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'mappo'. Buscando próximo algoritmo...
+🧵 [worker 3] pegou algoritmo 'matrpo' (posição 5) — 5 runs em sequência
+🚀 [worker 3] lançando: matrpo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run16.log
+✅ [worker 1] ippo (run16) concluído
+🚀 [worker 1] lançando: ippo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run17.log
+✅ [worker 2] hatrpo (run16) concluído
+🚀 [worker 2] lançando: hatrpo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run17.log
+✅ [worker 3] matrpo (run16) concluído
+🚀 [worker 3] lançando: matrpo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run17.log
+✅ [worker 1] ippo (run17) concluído
+🚀 [worker 1] lançando: ippo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run18.log
+✅ [worker 2] hatrpo (run17) concluído
+🚀 [worker 2] lançando: hatrpo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run18.log
+✅ [worker 3] matrpo (run17) concluído
+🚀 [worker 3] lançando: matrpo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run18.log
+✅ [worker 1] ippo (run18) concluído
+🚀 [worker 1] lançando: ippo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run19.log
+✅ [worker 2] hatrpo (run18) concluído
+🚀 [worker 2] lançando: hatrpo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run19.log
+✅ [worker 3] matrpo (run18) concluído
+🚀 [worker 3] lançando: matrpo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run19.log
+✅ [worker 1] ippo (run19) concluído
+🚀 [worker 1] lançando: ippo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run20.log
+✅ [worker 3] matrpo (run19) concluído
+🚀 [worker 3] lançando: matrpo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run20.log
+✅ [worker 2] hatrpo (run19) concluído
+🚀 [worker 2] lançando: hatrpo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run20.log
+✅ [worker 1] ippo (run20) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'ippo'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'happo' (posição 6) — 5 runs em sequência
+🚀 [worker 1] lançando: happo (run21) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run21.log
+✅ [worker 3] matrpo (run20) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'matrpo'. Buscando próximo algoritmo...
+🧵 [worker 3] pegou algoritmo 'itrpo' (posição 7) — 5 runs em sequência
+🚀 [worker 3] lançando: itrpo (run16) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run16.log
+✅ [worker 2] hatrpo (run20) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'hatrpo'. Buscando próximo algoritmo...
+🧵 [worker 2] fila esgotada, encerrando.
+✅ [worker 1] happo (run21) concluído
+🚀 [worker 1] lançando: happo (run22) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run22.log
+✅ [worker 3] itrpo (run16) concluído
+🚀 [worker 3] lançando: itrpo (run17) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run17.log
+✅ [worker 1] happo (run22) concluído
+🚀 [worker 1] lançando: happo (run23) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run23.log
+✅ [worker 3] itrpo (run17) concluído
+🚀 [worker 3] lançando: itrpo (run18) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run18.log
+✅ [worker 1] happo (run23) concluído
+🚀 [worker 1] lançando: happo (run24) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run24.log
+✅ [worker 3] itrpo (run18) concluído
+🚀 [worker 3] lançando: itrpo (run19) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run19.log
+✅ [worker 1] happo (run24) concluído
+🚀 [worker 1] lançando: happo (run25) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run25.log
+✅ [worker 3] itrpo (run19) concluído
+🚀 [worker 3] lançando: itrpo (run20) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run20.log
+✅ [worker 1] happo (run25) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'happo'. Buscando próximo algoritmo...
+🧵 [worker 1] fila esgotada, encerrando.
+✅ [worker 3] itrpo (run20) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'itrpo'. Buscando próximo algoritmo...
+🧵 [worker 3] fila esgotada, encerrando.
+🏁 Todos os algoritmos (8) x 5 runs foram concluídos!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)

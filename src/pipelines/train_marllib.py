@@ -99,7 +99,7 @@ class RLlibSuntBus(MultiAgentEnv):
         self.env = parallel_env(
             network=G,
             actions_amount=3,
-            agents_per_route=5, # Number of agents sharing the same route
+            agents_per_route=5, # Number of agents sharing the same route 
             use_only_mean_data=0, # 1 = use only mean data, 0 = use daily data
             max_steps=10000,
             num_agents=25,
@@ -111,7 +111,7 @@ class RLlibSuntBus(MultiAgentEnv):
             real_routes=real_routes,
             route_metadata=route_metadata,
             passenger_flow_stats=passenger_flow_stats,
-            occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm_ft" | "timesfm" | "naive"
+            occupancy_source ="timesfm", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm" | "naive"
             reward_raining_type = "normal", # normal | penalization | bonus
             metrics_file_objectives=metrics_file_objectives,
         )
@@ -336,7 +336,7 @@ def main():
         "stop": {"timesteps_total": 200000},  # adjust as needed
         "checkpoint_freq": 5,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 8,     # adjust as needed to gain velocity in the training, 15 is a good point
+        "num_workers": 12,     # adjust as needed to gain velocity in the training, 15 is a good point
         "share_policy": "individual",
         "local_dir": "/mnt/ssd1/ray_results",
     }

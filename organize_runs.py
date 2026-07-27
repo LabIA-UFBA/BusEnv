@@ -2,12 +2,12 @@ import os
 import shutil
 
 # ===== CONFIGURAÇÕES =====
-BASE_DIR = "exp_results/hatrpo_mlp_sunt_bus"
+BASE_DIR = "1runs/baseline/happo_mlp_sunt_bus"
 
 FILTER_KEY = "Trainer_sunt_bus_sunt_bus"
 
-RUN_TYPE = "HATRPO-RewardHard"
-WEIGHTS = "(0.5,0.7,0.5,0.6)"
+RUN_TYPE = "happo-BASELINE"
+WEIGHTS = "(1.0,0.0,0.0,0.0)"
 
 DRY_RUN = False
 # =========================
