@@ -344,6 +344,14 @@ def main():
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
+    # TESTE
+    final_config["gamma"] = 0.75
+
+    print("\n========== CONFIG ==========")
+    print(final_config)
+    print("============================\n")
+
+
     stop_conditions = final_config.pop("stop")
 
     # CodeCarbon tracker
