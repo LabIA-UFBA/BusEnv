@@ -341,11 +341,23 @@ def main():
         "local_dir": "/mnt/ssd1/ray_results",
     }
 
+    custom_config = {
+        "algo_args": {
+            "gamma": 0.4,              # Onde o MARLlib deveria ler padrão
+        },
+        "gamma": 0.4,                  # Onde o RLlib raiz costuma buscar
+        "model": {
+            "custom_model_config": {
+                "gamma": 0.4           # params.json
+            }
+        }
+    }
+
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
     # TESTE
-    final_config["gamma"] = 0.75
+    final_config["gamma"] = 0.4
 
     print("\n========== CONFIG ==========")
     print(final_config)

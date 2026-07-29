@@ -934,3 +934,214 @@ run_parallel_train.sh: line 165: `echo "🌱 CodeCarbon CSV: ${CC_OUTDIR}/emissi
 🚀 [worker 3] lançando: mappo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run42.log
 ✅ [worker 2] matrpo (run36) concluído
 🚀 [worker 2] lançando: matrpo (run37) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run37.log
+✅ [worker 1] maa2c (run40) concluído
+🚀 [worker 1] lançando: maa2c (run41) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run41.log
+✅ [worker 3] mappo (run42) concluído
+🚀 [worker 3] lançando: mappo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run43.log
+✅ [worker 2] matrpo (run37) concluído
+🚀 [worker 2] lançando: matrpo (run38) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run38.log
+✅ [worker 1] maa2c (run41) concluído
+🚀 [worker 1] lançando: maa2c (run42) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run42.log
+✅ [worker 3] mappo (run43) concluído
+🚀 [worker 3] lançando: mappo (run44) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run44.log
+✅ [worker 2] matrpo (run38) concluído
+🚀 [worker 2] lançando: matrpo (run39) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run39.log
+✅ [worker 1] maa2c (run42) concluído
+🚀 [worker 1] lançando: maa2c (run43) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run43.log
+✅ [worker 3] mappo (run44) concluído
+🚀 [worker 3] lançando: mappo (run45) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run45.log
+✅ [worker 2] matrpo (run39) concluído
+🚀 [worker 2] lançando: matrpo (run40) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run40.log
+✅ [worker 1] maa2c (run43) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'maa2c'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'hatrpo' (posição 3) — 5 runs em sequência
+🚀 [worker 1] lançando: hatrpo (run36) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run36.log
+✅ [worker 3] mappo (run45) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'mappo'. Buscando próximo algoritmo...
+🧵 [worker 3] pegou algoritmo 'happo' (posição 4) — 5 runs em sequência
+🚀 [worker 3] lançando: happo (run41) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run41.log
+✅ [worker 2] matrpo (run40) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'matrpo'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'ia2c' (posição 5) — 5 runs em sequência
+🚀 [worker 2] lançando: ia2c (run41) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run41.log
+✅ [worker 1] hatrpo (run36) concluído
+🚀 [worker 1] lançando: hatrpo (run37) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run37.log
+✅ [worker 2] ia2c (run41) concluído
+🚀 [worker 2] lançando: ia2c (run42) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run42.log
+✅ [worker 3] happo (run41) concluído
+🚀 [worker 3] lançando: happo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run42.log
+✅ [worker 1] hatrpo (run37) concluído
+🚀 [worker 1] lançando: hatrpo (run38) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run38.log
+✅ [worker 2] ia2c (run42) concluído
+🚀 [worker 2] lançando: ia2c (run43) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run43.log
+✅ [worker 3] happo (run42) concluído
+🚀 [worker 3] lançando: happo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run43.log
+✅ [worker 2] ia2c (run43) concluído
+🚀 [worker 2] lançando: ia2c (run44) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run44.log
+✅ [worker 1] hatrpo (run38) concluído
+🚀 [worker 1] lançando: hatrpo (run39) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run39.log
+✅ [worker 3] happo (run43) concluído
+🚀 [worker 3] lançando: happo (run44) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run44.log
+✅ [worker 2] ia2c (run44) concluído
+🚀 [worker 2] lançando: ia2c (run45) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run45.log
+✅ [worker 1] hatrpo (run39) concluído
+🚀 [worker 1] lançando: hatrpo (run40) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run40.log
+✅ [worker 3] happo (run44) concluído
+🚀 [worker 3] lançando: happo (run45) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run45.log
+✅ [worker 2] ia2c (run45) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'ia2c'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'itrpo' (posição 6) — 5 runs em sequência
+🚀 [worker 2] lançando: itrpo (run36) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run36.log
+✅ [worker 1] hatrpo (run40) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'hatrpo'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'ippo' (posição 7) — 5 runs em sequência
+🚀 [worker 1] lançando: ippo (run36) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run36.log
+✅ [worker 3] happo (run45) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'happo'. Buscando próximo algoritmo...
+🧵 [worker 3] fila esgotada, encerrando.
+✅ [worker 2] itrpo (run36) concluído
+🚀 [worker 2] lançando: itrpo (run37) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run37.log
+✅ [worker 1] ippo (run36) concluído
+🚀 [worker 1] lançando: ippo (run37) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run37.log
+✅ [worker 2] itrpo (run37) concluído
+🚀 [worker 2] lançando: itrpo (run38) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run38.log
+✅ [worker 1] ippo (run37) concluído
+🚀 [worker 1] lançando: ippo (run38) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run38.log
+✅ [worker 2] itrpo (run38) concluído
+🚀 [worker 2] lançando: itrpo (run39) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run39.log
+✅ [worker 1] ippo (run38) concluído
+🚀 [worker 1] lançando: ippo (run39) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run39.log
+✅ [worker 2] itrpo (run39) concluído
+🚀 [worker 2] lançando: itrpo (run40) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run40.log
+✅ [worker 1] ippo (run39) concluído
+🚀 [worker 1] lançando: ippo (run40) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run40.log
+✅ [worker 1] ippo (run40) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'ippo'. Buscando próximo algoritmo...
+🧵 [worker 1] fila esgotada, encerrando.
+✅ [worker 2] itrpo (run40) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'itrpo'. Buscando próximo algoritmo...
+🧵 [worker 2] fila esgotada, encerrando.
+🏁 Todos os algoritmos (8) x 5 runs foram concluídos!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+📋 Fila: 8 algoritmo(s) | 5 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'maa2c' (posição 0) — 5 runs em sequência
+🚀 [worker 1] lançando: maa2c (run44) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run44.log
+🧵 [worker 2] pegou algoritmo 'matrpo' (posição 1) — 5 runs em sequência
+🚀 [worker 2] lançando: matrpo (run41) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run41.log
+🧵 [worker 3] pegou algoritmo 'mappo' (posição 2) — 5 runs em sequência
+🚀 [worker 3] lançando: mappo (run46) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run46.log
+✅ [worker 1] maa2c (run44) concluído
+🚀 [worker 1] lançando: maa2c (run45) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run45.log
+✅ [worker 3] mappo (run46) concluído
+🚀 [worker 3] lançando: mappo (run47) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run47.log
+✅ [worker 2] matrpo (run41) concluído
+🚀 [worker 2] lançando: matrpo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run42.log
+✅ [worker 1] maa2c (run45) concluído
+🚀 [worker 1] lançando: maa2c (run46) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run46.log
+run_parallel_train.sh: line 121: 3507249 Aborted                 (core dumped) nohup python "${TRAIN_SCRIPT}" --algo "${algo}" --cc-run-id "${algo}-${run_id}" --cc-output-dir "${CC_OUTDIR}" > "${log_file}" 2>&1
+✅ [worker 2] matrpo (run42) concluído
+🚀 [worker 2] lançando: matrpo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run43.log
+run_parallel_train.sh: line 121: 3504706 Aborted                 (core dumped) nohup python "${TRAIN_SCRIPT}" --algo "${algo}" --cc-run-id "${algo}-${run_id}" --cc-output-dir "${CC_OUTDIR}" > "${log_file}" 2>&1
+✅ [worker 3] mappo (run47) concluído
+🚀 [worker 3] lançando: mappo (run48) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run48.log
+📋 Fila: 8 algoritmo(s) | 5 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'maa2c' (posição 0) — 5 runs em sequência
+🚀 [worker 1] lançando: maa2c (run47) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run47.log
+🧵 [worker 2] pegou algoritmo 'matrpo' (posição 1) — 5 runs em sequência
+🚀 [worker 2] lançando: matrpo (run44) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run44.log
+🧵 [worker 3] pegou algoritmo 'mappo' (posição 2) — 5 runs em sequência
+🚀 [worker 3] lançando: mappo (run49) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run49.log
+run_parallel_train.sh: line 121: 3541609 Aborted                 (core dumped) nohup python "${TRAIN_SCRIPT}" --algo "${algo}" --cc-run-id "${algo}-${run_id}" --cc-output-dir "${CC_OUTDIR}" > "${log_file}" 2>&1
+✅ [worker 3] mappo (run49) concluído
+🚀 [worker 3] lançando: mappo (run50) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run50.log
+run_parallel_train.sh: line 121: 3541276 Aborted                 (core dumped) nohup python "${TRAIN_SCRIPT}" --algo "${algo}" --cc-run-id "${algo}-${run_id}" --cc-output-dir "${CC_OUTDIR}" > "${log_file}" 2>&1
+✅ [worker 1] maa2c (run47) concluído
+🚀 [worker 1] lançando: maa2c (run48) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run48.log
+run_parallel_train.sh: line 121: 3541427 Aborted                 (core dumped) nohup python "${TRAIN_SCRIPT}" --algo "${algo}" --cc-run-id "${algo}-${run_id}" --cc-output-dir "${CC_OUTDIR}" > "${log_file}" 2>&1
+✅ [worker 2] matrpo (run44) concluído
+🚀 [worker 2] lançando: matrpo (run45) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run45.log
+📋 Fila: 8 algoritmo(s) | 5 runs cada | 3 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'maa2c' (posição 0) — 5 runs em sequência
+🚀 [worker 1] lançando: maa2c (run49) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run49.log
+🧵 [worker 2] pegou algoritmo 'matrpo' (posição 1) — 5 runs em sequência
+🚀 [worker 2] lançando: matrpo (run46) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run46.log
+🧵 [worker 3] pegou algoritmo 'mappo' (posição 2) — 5 runs em sequência
+🚀 [worker 3] lançando: mappo (run51) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run51.log
+✅ [worker 1] maa2c (run49) concluído
+🚀 [worker 1] lançando: maa2c (run50) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run50.log
+✅ [worker 3] mappo (run51) concluído
+🚀 [worker 3] lançando: mappo (run52) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run52.log
+✅ [worker 2] matrpo (run46) concluído
+🚀 [worker 2] lançando: matrpo (run47) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run47.log
+✅ [worker 1] maa2c (run50) concluído
+🚀 [worker 1] lançando: maa2c (run51) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run51.log
+✅ [worker 3] mappo (run52) concluído
+🚀 [worker 3] lançando: mappo (run53) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run53.log
+✅ [worker 2] matrpo (run47) concluído
+🚀 [worker 2] lançando: matrpo (run48) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run48.log
+✅ [worker 1] maa2c (run51) concluído
+🚀 [worker 1] lançando: maa2c (run52) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run52.log
+✅ [worker 3] mappo (run53) concluído
+🚀 [worker 3] lançando: mappo (run54) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run54.log
+✅ [worker 2] matrpo (run48) concluído
+🚀 [worker 2] lançando: matrpo (run49) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run49.log
+✅ [worker 1] maa2c (run52) concluído
+🚀 [worker 1] lançando: maa2c (run53) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run53.log
+✅ [worker 3] mappo (run54) concluído
+🚀 [worker 3] lançando: mappo (run55) -> /mnt/ssd1/wesley/BusEnv/logs/mappo_run55.log
+✅ [worker 2] matrpo (run49) concluído
+🚀 [worker 2] lançando: matrpo (run50) -> /mnt/ssd1/wesley/BusEnv/logs/matrpo_run50.log
+✅ [worker 1] maa2c (run53) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'maa2c'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'hatrpo' (posição 3) — 5 runs em sequência
+🚀 [worker 1] lançando: hatrpo (run41) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run41.log
+✅ [worker 3] mappo (run55) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'mappo'. Buscando próximo algoritmo...
+🧵 [worker 3] pegou algoritmo 'happo' (posição 4) — 5 runs em sequência
+🚀 [worker 3] lançando: happo (run46) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run46.log
+✅ [worker 2] matrpo (run50) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'matrpo'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'ia2c' (posição 5) — 5 runs em sequência
+🚀 [worker 2] lançando: ia2c (run46) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run46.log
+✅ [worker 1] hatrpo (run41) concluído
+🚀 [worker 1] lançando: hatrpo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run42.log
+✅ [worker 2] ia2c (run46) concluído
+🚀 [worker 2] lançando: ia2c (run47) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run47.log
+✅ [worker 3] happo (run46) concluído
+🚀 [worker 3] lançando: happo (run47) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run47.log
+✅ [worker 2] ia2c (run47) concluído
+🚀 [worker 2] lançando: ia2c (run48) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run48.log
+✅ [worker 1] hatrpo (run42) concluído
+🚀 [worker 1] lançando: hatrpo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run43.log
+✅ [worker 3] happo (run47) concluído
+🚀 [worker 3] lançando: happo (run48) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run48.log
+✅ [worker 2] ia2c (run48) concluído
+🚀 [worker 2] lançando: ia2c (run49) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run49.log
+✅ [worker 1] hatrpo (run43) concluído
+🚀 [worker 1] lançando: hatrpo (run44) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run44.log
+✅ [worker 3] happo (run48) concluído
+🚀 [worker 3] lançando: happo (run49) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run49.log
+✅ [worker 2] ia2c (run49) concluído
+🚀 [worker 2] lançando: ia2c (run50) -> /mnt/ssd1/wesley/BusEnv/logs/ia2c_run50.log
+✅ [worker 1] hatrpo (run44) concluído
+🚀 [worker 1] lançando: hatrpo (run45) -> /mnt/ssd1/wesley/BusEnv/logs/hatrpo_run45.log
+✅ [worker 3] happo (run49) concluído
+🚀 [worker 3] lançando: happo (run50) -> /mnt/ssd1/wesley/BusEnv/logs/happo_run50.log
+✅ [worker 2] ia2c (run50) concluído
+🏁 [worker 2] terminou TODAS as 5 runs de 'ia2c'. Buscando próximo algoritmo...
+🧵 [worker 2] pegou algoritmo 'itrpo' (posição 6) — 5 runs em sequência
+🚀 [worker 2] lançando: itrpo (run41) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run41.log
+✅ [worker 1] hatrpo (run45) concluído
+🏁 [worker 1] terminou TODAS as 5 runs de 'hatrpo'. Buscando próximo algoritmo...
+🧵 [worker 1] pegou algoritmo 'ippo' (posição 7) — 5 runs em sequência
+🚀 [worker 1] lançando: ippo (run41) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run41.log
+✅ [worker 3] happo (run50) concluído
+🏁 [worker 3] terminou TODAS as 5 runs de 'happo'. Buscando próximo algoritmo...
+🧵 [worker 3] fila esgotada, encerrando.
+✅ [worker 2] itrpo (run41) concluído
+🚀 [worker 2] lançando: itrpo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run42.log
+✅ [worker 1] ippo (run41) concluído
+🚀 [worker 1] lançando: ippo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run42.log
+✅ [worker 2] itrpo (run42) concluído
+🚀 [worker 2] lançando: itrpo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run43.log

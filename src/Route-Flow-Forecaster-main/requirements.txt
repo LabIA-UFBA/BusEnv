@@ -1,0 +1,24 @@
+# Route Flow Forecaster — Python 3.11 (pyenv)
+# torch: install FIRST, matching the server's CUDA, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# (a bare `pip install torch` works too if the default CUDA build suits the server)
+torch>=2.2
+
+# TimesFM 2.5 stack — versions validated in the previous lab project
+transformers==5.8.0
+huggingface_hub>=1.5,<2.0
+peft>=0.10
+accelerate>=0.30
+
+# Data / plotting / progress
+numpy>=1.26
+pandas>=2.1,<3
+pyarrow>=14
+matplotlib>=3.8
+tqdm>=4.66
+tabulate>=0.9          # pandas .to_markdown() in the availability report
+requests>=2.31         # prepare-data: direct HF download of SUNT OD files
+
+# OPTIONAL — only for `prepare-data --source suntdataset`; the default
+# `--source hf` downloads straight from HuggingFace and does not need it:
+# suntdataset
