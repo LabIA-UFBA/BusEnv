@@ -5,9 +5,9 @@ import pickle
 import pandas as pd
 
 # === CONFIGURAÇÕES ===
-BASE_PATH = "/media/wesley/Disco_local/tes/BusEnv/SUNT/tmp"
-OUTPUT_PATH = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation"
-GRAPH_PATH = "/media/wesley/Disco_local/tes/BusEnv/src/viz/graph_gtfs_fev_2024.gpickle"
+BASE_PATH = "your base path"
+OUTPUT_PATH = "/media/xxxx/Disco_local/tes/xxx/src/training_observation"
+GRAPH_PATH = "/media/xxxx/Disco_local/tes/xxxx/src/viz/graph_gtfs_fev_2024.gpickle"
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 

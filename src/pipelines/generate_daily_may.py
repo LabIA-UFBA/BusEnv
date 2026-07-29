@@ -21,9 +21,9 @@ from collections import defaultdict
 # ============================================================
 # CONFIGURAÇÕES DE CAMINHOS
 # ============================================================
-BASE_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm"
-OUTPUT_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm/daily"
-GRAPH_PATH = "/mnt/ssd1/wesley/BusEnv/src/viz/graph_gtfs_fev_2024.gpickle"
+BASE_PATH = "/mnt/ssd1/xxxx/xxx/xxxx/tpm"
+OUTPUT_PATH = "/mnt/ssd1/xxxx/xxx/xxxx/tpm/daily"
+GRAPH_PATH = "/mnt/ssd1/xxxx/xxx/src/viz/graph_gtfs_fev_2024.gpickle"
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 

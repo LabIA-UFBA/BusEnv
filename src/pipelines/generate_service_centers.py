@@ -4,7 +4,7 @@ import pickle
 import pandas as pd
 
 # Paths
-BASE_PATH = "/media/your_user/Disco_local/tes/graph-exploration/SUNT/tmp"
+BASE_PATH = "your base path"
 OUTPUT_PATH = "../training_observation"
 GRAPH_PATH = "/media/your_user/Disco_local/tes/graph-exploration/src/viz/graph_gtfs_fev_2024.gpickle"
 NODE_FEATURES_PATH = os.path.join(BASE_PATH, "graph", "node_features.parquet")  # <-- Ajuste se precisar

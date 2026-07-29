@@ -72,7 +72,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     # Each command captures additional arguments after '--'
-    sub.add_parser("env-sunt", help="Run the entrypoint of the SUNT environment") \
+    sub.add_parser("env-timesfm_env", help="Run the entrypoint of the timesfm_env environment") \
         .add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("train", help="Train with RLlib") \
         .add_argument("args", nargs=argparse.REMAINDER)
@@ -123,7 +123,7 @@ def main(argv=None):
 
     # Command mapping -> module
     modmap = {
-        "env-sunt": "src.envs.sunt_env",
+        "env-timesfm": "src.envs.timesfm_env",
         "train": "src.pipelines.train_rllib",
         "train-marllib-a2c": "src.pipelines.train_marllib_a2c",
         "train-custom-a2c": "src.pipelines.train_custom_a2c",

@@ -2,8 +2,8 @@ import pickle
 from pprint import pprint
 
 # Caminho do arquivo de um dia
-path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily/daily_data_2024-03-01.pkl"
-path = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm/daily/daily_data_2024-05-01.pkl"
+path = "your base path/training_observation/daily/daily_data_2024-03-01.pkl"
+path = "your base pathT/tpm/daily/daily_data_2024-05-01.pkl"
 
 with open(path, "rb") as f:
     data = pickle.load(f)

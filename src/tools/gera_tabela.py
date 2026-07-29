@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pandas as pd
 
-BASE_DIR = "/mnt/ssd1/wesley/BusEnv/exp_results/mappo_mlp_sunt_bus"
+BASE_DIR = "your base path"
 OUT_AGG = os.path.join(BASE_DIR, "tabela_aggregada_robusta.csv")
 OUT_DETAILED = os.path.join(BASE_DIR, "tabela_detalhada_runs.csv")
 

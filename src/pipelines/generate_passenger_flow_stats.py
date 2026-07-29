@@ -50,7 +50,7 @@ from collections import defaultdict
 # CONFIGURAÇÕES DE CAMINHOS
 # ============================================================
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_BASE_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tpm"
+DEFAULT_BASE_PATH = "your base path"
 DEFAULT_OUTPUT_PATH = os.path.normpath(os.path.join(_THIS_DIR, "..", "training_observation"))
 GRAPH_PATH = os.path.normpath(os.path.join(_THIS_DIR, "..", "viz", "graph_gtfs_fev_2024.gpickle"))
 

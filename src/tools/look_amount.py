@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # Path to the main dataset folder
-base_path = "SUNT/tmp"
+base_path = "your base path"
 
 # Path to the output file
 output_path = "overview.txt"

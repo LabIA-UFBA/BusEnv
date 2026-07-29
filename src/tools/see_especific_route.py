@@ -1,7 +1,7 @@
 import pickle
 
 # Path where files were saved
-pkl_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation"
+pkl_path = "your base path"
 
 # Load the files
 with open(f"{pkl_path}/real_routes.pkl", "rb") as f:

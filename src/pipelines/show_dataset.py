@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 # Caminho base dos seus arquivos
-BASE_PATH = "/media/wesley/Disco_local/tes/BusEnv/SUNT/tmp"
+BASE_PATH = "your base path"
 
 # Lista de arquivos a inspecionar (adicione outros se quiser)
 FILES = [

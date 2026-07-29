@@ -19,7 +19,7 @@ from collections import defaultdict
 # ============================================================
 # CONFIGURAÇÕES DE CAMINHOS
 # ============================================================
-BASE_PATH = "/media/your_user/Disco_local/graph-exploration/SUNT/tmp"
+BASE_PATH = "your base path"
 OUTPUT_PATH = "../training_observation"
 GRAPH_PATH = "./src/viz/graph_gtfs_fev_2024.gpickle"
 

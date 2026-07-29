@@ -1,4 +1,4 @@
-"""Convert progress.csv files from wesley's BusEnv/1runs into parquet, one per seed run.
+"""Convert progress.csv files from wesley's xxxx/1runs into parquet, one per seed run.
 
 Only the 5 algorithms and 3 approaches relevant to this analysis are converted.
 """

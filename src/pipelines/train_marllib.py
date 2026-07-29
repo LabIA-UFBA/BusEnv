@@ -9,7 +9,7 @@ from gym.spaces import Dict as GymDict
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from marllib import marl
 from marllib.envs.base_env import ENV_REGISTRY
-from envs.sunt_env import parallel_env
+from envs.timesfm_env import parallel_env
 from supersuit import pad_observations_v0, pad_action_space_v0
 from contextlib import nullcontext
 
@@ -57,15 +57,15 @@ def _make_tracker(enabled: bool, *, project_name: str, output_dir: str = None):
     return _TrackerCtx(), tracker
 
 # ------------------------------
-# RLlibSuntBus Environment
+# RLlibtimesfmBus Environment
 # ------------------------------
-class RLlibSuntBus(MultiAgentEnv):
+class RLlibtimesfmBus(MultiAgentEnv):
     def __init__(self, env_config):
         BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
         metrics_file_objectives = os.environ.get(
-            "SUNT_METRICS_FILE",
-            "/mnt/ssd1/wesley/BusEnv/metrics/episode_metrics.csv" # Change this to your path 
+            "timesfm_METRICS_FILE",
+            "/mnt/ssd1/xxxx/xxxx/metrics/episode_metrics.csv" # Change this to your path 
         )
 
         print(f"[ENV INIT] Using metrics_file_objectives = {metrics_file_objectives}")
@@ -239,7 +239,7 @@ class RLlibSuntBus(MultiAgentEnv):
             "agent_id": self.agents,
             "share_observation_space": self.observation_space,
             "policy_mapping_info": {
-                "sunt_bus": {
+                "timesfm_bus": {
                     "all_agents_one_policy": False,
                     "one_agent_one_policy": True,
                     "policy_map": {agent_id: f"policy_{i}" for i, agent_id in enumerate(self.agents)},
@@ -249,7 +249,7 @@ class RLlibSuntBus(MultiAgentEnv):
 
 
 # Register environment
-ENV_REGISTRY["sunt_bus"] = RLlibSuntBus
+ENV_REGISTRY["timesfm_bus"] = RLlibtimesfmBus
 
 # ------------------------------
 # Algorithm Configs (commented placeholders)
@@ -290,7 +290,7 @@ def main():
     os.makedirs("/mnt/ssd1/ray_tmp", exist_ok=True)
     os.makedirs("/mnt/ssd1/tmp", exist_ok=True)
 
-    parser = argparse.ArgumentParser(description="Train MARLlib algorithms on SUNT Bus env")
+    parser = argparse.ArgumentParser(description="Train MARLlib algorithms on  Bus env")
     parser.add_argument(
         "--algo",
         type=str,
@@ -315,13 +315,13 @@ def main():
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
-    metrics_dir = "/mnt/ssd1/wesley/BusEnv/metrics" # Change this to your path 
+    metrics_dir = "/mnt/ssd1/xxxx/xxxx/metrics" # Change this to your path 
     os.makedirs(metrics_dir, exist_ok=True)
     run_tag = args.cc_run_id or f"{args.algo}-default"
     metrics_file_objectives = os.path.join(metrics_dir, f"episode_metrics_{run_tag}.csv")
     
     # Environment
-    env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
+    env_tuple = marl.make_env(environment_name="timesfm_bus", map_name="timesfm_bus", force_coop=False)
 
     # Algorithm
     algo_ctor = getattr(marl.algos, args.algo)
@@ -341,27 +341,9 @@ def main():
         "local_dir": "/mnt/ssd1/ray_results",
     }
 
-    custom_config = {
-        "algo_args": {
-            "gamma": 0.4,              # Onde o MARLlib deveria ler padrão
-        },
-        "gamma": 0.4,                  # Onde o RLlib raiz costuma buscar
-        "model": {
-            "custom_model_config": {
-                "gamma": 0.4           # params.json
-            }
-        }
-    }
-
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
-    # TESTE
-    final_config["gamma"] = 0.4
-
-    print("\n========== CONFIG ==========")
-    print(final_config)
-    print("============================\n")
 
 
     stop_conditions = final_config.pop("stop")
