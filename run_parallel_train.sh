@@ -128,7 +128,7 @@ worker() {
       local log_file="${LOG_DIR}/${algo}_${run_id}.log"
       local metrics_file="${METRICS_DIR}/episode_metrics_${algo}_${run_id}.csv"
 
-      export SUNT_METRICS_FILE="${metrics_file}"
+      export TIMESFM_METRICS_FILE="${metrics_file}"
 
       echo "🚀 [worker ${worker_id}] lançando: ${algo} (${run_id}) -> ${log_file}"
 

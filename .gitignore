@@ -7,8 +7,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-sunt/
-SUNT/
 exp_results/
 tensorboard_graph_exploration/
 logs.txt
