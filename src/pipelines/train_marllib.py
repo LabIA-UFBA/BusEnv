@@ -111,7 +111,7 @@ class RLlibSuntBus(MultiAgentEnv):
             real_routes=real_routes,
             route_metadata=route_metadata,
             passenger_flow_stats=passenger_flow_stats,
-            occupancy_source ="timesfm", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm" | "naive"
+            occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm" | "naive"
             reward_raining_type = "normal", # normal | penalization | bonus
             metrics_file_objectives=metrics_file_objectives,
         )
@@ -341,6 +341,7 @@ def main():
         "local_dir": "/mnt/ssd1/ray_results",
     }
 
+    """
     custom_config = {
         "algo_args": {
             "gamma": 0.4,              # Onde o MARLlib deveria ler padrão
@@ -353,11 +354,11 @@ def main():
         }
     }
 
+    """
+
 
     custom_config = ALGO_CONFIGS.get(args.algo, DEFAULT_CONFIG)
     final_config = {**run_config, **custom_config}
-    # TESTE
-    final_config["gamma"] = 0.4
 
     print("\n========== CONFIG ==========")
     print(final_config)

@@ -1145,3 +1145,15 @@ run_parallel_train.sh: line 121: 3541427 Aborted                 (core dumped) n
 🚀 [worker 1] lançando: ippo (run42) -> /mnt/ssd1/wesley/BusEnv/logs/ippo_run42.log
 ✅ [worker 2] itrpo (run42) concluído
 🚀 [worker 2] lançando: itrpo (run43) -> /mnt/ssd1/wesley/BusEnv/logs/itrpo_run43.log
+📋 Fila: 1 algoritmo(s) | 1 runs cada | 1 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'maa2c' (posição 0) — 1 runs em sequência
+🚀 [worker 1] lançando: maa2c (run54) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run54.log
+✅ [worker 1] maa2c (run54) concluído
+🏁 [worker 1] terminou TODAS as 1 runs de 'maa2c'. Buscando próximo algoritmo...
+🧵 [worker 1] fila esgotada, encerrando.
+🏁 Todos os algoritmos (1) x 1 runs foram concluídos!
+📄 Logs: /mnt/ssd1/wesley/BusEnv/logs
+🌱 CodeCarbon CSV: /mnt/ssd1/wesley/BusEnv/codecarbon/emissions.csv (por padrão)
+📋 Fila: 1 algoritmo(s) | 1 runs cada | 1 vaga(s) simultânea(s)
+🧵 [worker 1] pegou algoritmo 'maa2c' (posição 0) — 1 runs em sequência
+🚀 [worker 1] lançando: maa2c (run55) -> /mnt/ssd1/wesley/BusEnv/logs/maa2c_run55.log

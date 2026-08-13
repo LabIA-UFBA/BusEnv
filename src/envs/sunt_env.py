@@ -157,7 +157,7 @@ class parallel_env(ParallelEnv):
 
         # --- Daily Data Control ---
         self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
-        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily_may"  # Path to daily data ONLY USING MAY
+        # self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily_may"  # Path to daily data ONLY USING MAY
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -908,18 +908,21 @@ class parallel_env(ParallelEnv):
                 """
 
                 state["occupancy"] = occupancy
-
+                
+                # =====================================================
+                # NEW FARF OCCUPANCY REWARD
+                # =====================================================
                 # Future occupancies always come from the configured occupancy source.
                 # Depending on occupancy_source this dictionary may contain:
                 #   - real historical occupancy (SUNT)
                 #   - Quantum predictions
                 #   - LSTM predictions
                 #   - TimesFM predictions
-                state["predicted_occupancies"] = self._get_future_occupancies(
-                    agent=agent,
-                    route=route,
-                    current_occupancy=occupancy
-                )
+                #state["predicted_occupancies"] = self._get_future_occupancies(
+                #    agent=agent,
+                #    route=route,
+                #    current_occupancy=occupancy
+                #)
                 # state["uptime"] = min(1.0, state["uptime"] / (travel_time_hors + 1e-8))
                 travel_time_hors = travel_time / (12 * 3600) 
                 old = state["uptime"] 
@@ -2185,10 +2188,10 @@ class DefaultReward(RewardBaseClass):
         # weight restores the intended multi-objective signal (including making the
         # headway-synchronization term below actually reach the policy gradient).
         self.reward_weights = reward_weights or {
-            "occ_penalty": 1.0,
-            "uptime_bonus": 0.0,
-            "sync_score": 0.0,
-            "energy_efficiency": 0.0
+            "occ_penalty": 0.6,
+            "uptime_bonus": 0.4,
+            "sync_score": 0.5,
+            "energy_efficiency": 0.5
         }
 
         self.occupancy_range = occupancy_range
@@ -2606,25 +2609,23 @@ class DefaultReward(RewardBaseClass):
             # OLD OCCUPANCY REWARD (Baseline)
             # =====================================================
             #
-            # occupancy = float(agent_state.get("occupancy", 0.0))
-            # occ_pen = self._occ_component(occupancy)
-            # occ_score = 1.0 - occ_pen # ESTAMOS INVERTENDO A PENALIDADE PARA QUE TUDO SEJA O MESMO SENTIDO, QUANTO MENOR PIOR 
+             occupancy = float(agent_state.get("occupancy", 0.0))
+             occ_pen = self._occ_component(occupancy)
+             occ_score = 1.0 - occ_pen # ESTAMOS INVERTENDO A PENALIDADE PARA QUE TUDO SEJA O MESMO SENTIDO, QUANTO MENOR PIOR 
             # =====================================================
             # NEW FARF OCCUPANCY REWARD
             # =====================================================
-            occupancy = float(agent_state.get("occupancy", 0.0))
+            #occupancy = float(agent_state.get("occupancy", 0.0))
 
-            predicted = agent_state.get("predicted_occupancies", [])
+            #predicted = agent_state.get("predicted_occupancies", [])
 
-            occ_score = self._farf_occupancy_reward(
-                occupancy,
-                predicted
-            )
+            #occ_score = self._farf_occupancy_reward(
+            #    occupancy,
+            #    predicted
+            #)
             # =====================================================
-            uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
-
-    
-                
+        
+        uptime = float(np.clip(agent_state.get("uptime", 1.0), 0.0, 1.0))
         
         
         # Population-level RMS metric, kept only as a secondary debug diagnostic —
@@ -2645,20 +2646,20 @@ class DefaultReward(RewardBaseClass):
             # =====================================================
             # BASELINE
             # =====================================================
-            # self.env.episode_occupancy_ideal_flags[agent].append(
-            #     1.0 if occ_pen == 0.0 else 0.0
-            # )
+            self.env.episode_occupancy_ideal_flags[agent].append(
+                 1.0 if occ_pen == 0.0 else 0.0
+             )
 
             # =====================================================
             # FARF
             # =====================================================
-            inside_interval = (
-                abs(occupancy - self.farf_desired_occ) <= self.farf_delta
-            )
+            #inside_interval = (
+            #    abs(occupancy - self.farf_desired_occ) <= self.farf_delta
+            #)
 
-            self.env.episode_occupancy_ideal_flags[agent].append(
-                1.0 if inside_interval else 0.0
-            )
+            #self.env.episode_occupancy_ideal_flags[agent].append(
+            #    1.0 if inside_interval else 0.0
+            #)
 
         # --- Base efficiency ---
         eff = self._efficiency_component(float(estimated_time), float(expected_time))
@@ -2691,8 +2692,8 @@ class DefaultReward(RewardBaseClass):
 
         # transforma penalidade em score
 
-        # assert 0 <= occ_score <= 1 # OLD OCCUPANCY REWARD (Baseline)
-        assert -1.0 <= occ_score <= 1.0 # FARF occupancy reward may become negative.
+        assert 0 <= occ_score <= 1 # OLD OCCUPANCY REWARD (Baseline)
+        #assert -1.0 <= occ_score <= 1.0 # FARF occupancy reward may become negative.
         assert 0 <= uptime <= 1
         assert 0 <= sync <= 1
         assert 0 <= modified_eff <= 1
