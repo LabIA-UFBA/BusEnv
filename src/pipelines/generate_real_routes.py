@@ -5,9 +5,9 @@ import pickle
 import pandas as pd
 
 # === CONFIGURAÇÕES ===
-BASE_PATH = "/media/wesley/Disco_local/tes/BusEnv/SUNT/tmp"
-OUTPUT_PATH = "/media/wesley/Disco_local/tes/BusEnv/src/training_observation"
-GRAPH_PATH = "/media/wesley/Disco_local/tes/BusEnv/src/viz/graph_gtfs_fev_2024.gpickle"
+BASE_PATH = "/mnt/ssd1/wesley/BusEnv/SUNT/tmp"
+OUTPUT_PATH = "/mnt/ssd1/wesley/BusEnv/src/training_observation"
+GRAPH_PATH = "/mnt/ssd1/wesley/BusEnv/src/viz/graph_gtfs_fev_2024.gpickle"
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -112,6 +112,70 @@ print(f"🧮 Total antes da deduplicação: {len(real_routes)}")
 print(f"✅ Total após deduplicação: {len(unique_routes)}")
 removed = len(real_routes) - len(unique_routes)
 print(f"🚮 Rotas removidas: {removed}")
+
+
+import math
+
+# ------------------------------------------------------------------
+# Zonas de obra -- coordenadas APROXIMADAS
+# ------------------------------------------------------------------
+OBRAS = {
+    "batatinha": {
+        "lat": -12.912,   # aprox. Metrô Bom Juá / Mata Escura -- CONFERIR
+        "lon": -38.432,
+        "raio_m": 600,
+    },
+    "duda_mendonca": {
+        "lat": -12.9895,  # aprox. Av. ACM, região do DETRAN antigo -- CONFERIR
+        "lon": -38.4630,
+        "raio_m": 600,
+    },
+}
+
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+# --- Carrega coordenadas dos stops a partir do GTFS Stops ---
+# Ajuste o path pro arquivo real de stops do seu dataset.
+STOPS_PATH = os.path.join(BASE_PATH, "GTFS/BUS", "stops.txt")
+df_stops = pd.read_csv(STOPS_PATH, dtype={"stop_id": str})
+
+df_stops = df_stops[df_stops["location_type"] == 0].copy()
+stop_coords = dict(zip(df_stops["stop_id"], zip(df_stops["stop_lat"], df_stops["stop_lon"])))
+
+def route_min_distance(stops, obra_lat, obra_lon):
+    dists = [
+        haversine_m(lat, lon, obra_lat, obra_lon)
+        for s in stops
+        if (coord := stop_coords.get(s)) is not None
+        for lat, lon in [coord]
+    ]
+    return min(dists) if dists else None
+
+# --- Monta a tabela de proximidade por rota ---
+rows = []
+for trip_id, stops in unique_routes.items():
+    row = {
+        "trip_id": trip_id,
+        "route_short_name": metadata_cleaned[trip_id]["route_short_name"],
+    }
+    for obra_name, obra in OBRAS.items():
+        d = route_min_distance(stops, obra["lat"], obra["lon"])
+        row[f"dist_{obra_name}_m"] = d
+        row[f"perto_{obra_name}"] = bool(d is not None and d <= obra["raio_m"])
+    rows.append(row)
+
+df_proximity = pd.DataFrame(rows)
+df_proximity.to_csv(os.path.join(OUTPUT_PATH, "route_obras_proximity.csv"), index=False)
+
+print("\n🚧 Rotas próximas de alguma obra:")
+print(df_proximity[df_proximity.filter(like="perto_").any(axis=1)])
+
 
 # === Salvamento final ===
 with open(os.path.join(OUTPUT_PATH, "real_routes.pkl"), "wb") as f:

@@ -1,90 +1,248 @@
 import os
 import shutil
+import glob
 
-# ===== CONFIGURAÇÕES =====
-BASE_DIR = "1runs/baseline/happo_mlp_sunt_bus"
 
-FILTER_KEY = "Trainer_sunt_bus_sunt_bus"
+# ==========================================================
+# CONFIGURAÇÕES
+# ==========================================================
 
-RUN_TYPE = "happo-BASELINE"
-WEIGHTS = "(1.0,0.0,0.0,0.0)"
+# Pasta raiz do projeto BusEnv
+BASE_DIR = os.path.abspath(".")
 
+# Pasta onde estão os CSVs
+METRICS_DIR = os.path.join(BASE_DIR, "metrics")
+
+# Pasta do experimento
+TARGET_ROOT = os.path.join(
+    BASE_DIR,
+    "runs_lexicografico",
+    "RUN_OCC_MAX_WEIGHT"
+)
+
+# ==========================================================
+# IMPORTANTE
+# ==========================================================
+# True  -> apenas mostra o que seria movido
+# False -> executa os movimentos
 DRY_RUN = False
-# =========================
 
 
-def is_valid_run(path, name):
-    return os.path.isdir(path) and FILTER_KEY in name
+# Algoritmos e prefixos das pastas de treinamento
+ALGORITHMS = {
+    "COMA": "coma_mlp_sunt_bus",
+    "HAPPO": "happo_mlp_sunt_bus",
+    "HATRPO": "hatrpo_mlp_sunt_bus",
+    "IA2C": "ia2c_mlp_sunt_bus",
+    "IPPO": "ippo_mlp_sunt_bus",
+    "ITRPO": "itrpo_mlp_sunt_bus",
+    "MAA2C": "maa2c_mlp_sunt_bus",
+    "MAPPO": "mappo_mlp_sunt_bus",
+    "MATRPO": "matrpo_mlp_sunt_bus",
+}
 
 
-def extract_time_code(name):
+# ==========================================================
+# FUNÇÕES AUXILIARES
+# ==========================================================
+
+def move_item(src, dst):
     """
-    Extrai o código final HH-MM-SS
-    Ex: ..._2026-02-18_09-11-44 -> 09-11-44
+    Move um arquivo ou pasta.
     """
-    try:
-        return name.split("_")[-1]
-    except Exception:
-        return None
+
+    print(f"    {src}")
+    print(f" -> {dst}")
+
+    if not DRY_RUN:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.move(src, dst)
 
 
-def move_state_files(base_dir, original_run_name, new_run_path):
+def find_algorithm_runs(algorithm, prefix):
     """
-    Move basic-variant-state e experiment_state
-    que tenham o mesmo HH-MM-SS da run
-    """
-    time_code = extract_time_code(original_run_name)
-    if not time_code:
-        return
+    Encontra todas as pastas de treinamento pertencentes
+    ao algoritmo.
 
-    for fname in os.listdir(base_dir):
-        if not (
-            fname.startswith("basic-variant-state-")
-            or fname.startswith("experiment_state-")
-        ):
+    Exemplo HAPPO:
+        happo_mlp_sunt_bus_..._seed-0
+        happo_mlp_sunt_bus_..._seed-1
+        happo_mlp_sunt_bus_..._seed-3
+        happo_mlp_sunt_bus_..._seed-5
+    """
+
+    runs = []
+
+    for name in os.listdir(BASE_DIR):
+
+        path = os.path.join(BASE_DIR, name)
+
+        if not os.path.isdir(path):
             continue
 
-        if not fname.endswith(time_code):
+        # Não procurar dentro das pastas de resultados
+        if name in [
+            "metrics",
+            "runs_lexicografico",
+            "logs",
+            "results",
+            "MARLlib"
+        ]:
             continue
 
-        src = os.path.join(base_dir, fname)
-        dst = os.path.join(new_run_path, fname)
+        if name.lower().startswith(prefix.lower()):
+            runs.append(path)
 
-        print(f"    ↳ movendo state {fname}")
+    return sorted(runs)
 
-        if not DRY_RUN:
-            shutil.move(src, dst)
 
+def find_algorithm_metrics(algorithm):
+    """
+    Encontra os CSVs do algoritmo.
+
+    Exemplo:
+        episode_metrics_coma_run33.csv
+        episode_metrics_coma_run34.csv
+        episode_metrics_coma_run35.csv
+    """
+
+    pattern = os.path.join(
+        METRICS_DIR,
+        f"episode_metrics_{algorithm.lower()}_run*.csv"
+    )
+
+    return sorted(glob.glob(pattern))
+
+
+# ==========================================================
+# ORGANIZAÇÃO
+# ==========================================================
+
+def organize_algorithm(algorithm, prefix):
+
+    target_dir = os.path.join(
+        TARGET_ROOT,
+        f"{algorithm}_OCC_MAX_WEIGHT"
+    )
+
+    print("\n" + "=" * 60)
+    print(f" {algorithm}")
+    print("=" * 60)
+
+    # ------------------------------------------------------
+    # Cria pasta do algoritmo
+    # ------------------------------------------------------
+
+    print(f"\nPasta destino:")
+    print(f"  {target_dir}")
+
+    if not DRY_RUN:
+        os.makedirs(target_dir, exist_ok=True)
+
+    # ------------------------------------------------------
+    # Encontrar runs
+    # ------------------------------------------------------
+
+    runs = find_algorithm_runs(
+        algorithm,
+        prefix
+    )
+
+    print(f"\nRuns encontradas: {len(runs)}")
+
+    for run in runs:
+
+        run_name = os.path.basename(run)
+
+        destination = os.path.join(
+            target_dir,
+            run_name
+        )
+
+        move_item(
+            run,
+            destination
+        )
+
+    # ------------------------------------------------------
+    # Encontrar métricas
+    # ------------------------------------------------------
+
+    metrics = find_algorithm_metrics(
+        algorithm
+    )
+
+    print(f"\nCSVs encontrados: {len(metrics)}")
+
+    for metric in metrics:
+
+        metric_name = os.path.basename(metric)
+
+        destination = os.path.join(
+            target_dir,
+            metric_name
+        )
+
+        move_item(
+            metric,
+            destination
+        )
+
+
+# ==========================================================
+# MAIN
+# ==========================================================
 
 def main():
-    base_dir = os.path.abspath(BASE_DIR)
 
-    target_root = os.path.join(base_dir, f"{RUN_TYPE} {WEIGHTS}")
-    os.makedirs(target_root, exist_ok=True)
+    print("=" * 60)
+    print(" ORGANIZADOR - RUN_OCC_MAX_WEIGHT")
+    print("=" * 60)
 
-    runs = [
-        name for name in os.listdir(base_dir)
-        if is_valid_run(os.path.join(base_dir, name), name)
-    ]
+    print(f"\nBASE_DIR:")
+    print(f"  {BASE_DIR}")
 
-    runs.sort()
+    print(f"\nMETRICS_DIR:")
+    print(f"  {METRICS_DIR}")
 
-    print(f"Encontradas {len(runs)} runs válidas.")
+    print(f"\nTARGET_ROOT:")
+    print(f"  {TARGET_ROOT}")
 
-    for idx, run_name in enumerate(runs, start=1):
-        src = os.path.join(base_dir, run_name)
-        dst_name = f"{RUN_TYPE} {WEIGHTS} - {idx}"
-        dst = os.path.join(target_root, dst_name)
+    print(f"\nDRY_RUN: {DRY_RUN}")
 
-        print(f"{src}  -->  {dst}")
+    # ------------------------------------------------------
+    # Verificações
+    # ------------------------------------------------------
 
-        if not DRY_RUN:
-            shutil.move(src, dst)
+    if not os.path.exists(METRICS_DIR):
+        print("\nERRO: pasta metrics não encontrada.")
+        return
 
-        # 👇 NOVA FUNÇÃO AQUI
-        move_state_files(base_dir, run_name, dst)
+    if not os.path.exists(TARGET_ROOT):
+        if DRY_RUN:
+            print("\nA pasta destino ainda não existe.")
+        else:
+            os.makedirs(TARGET_ROOT, exist_ok=True)
 
-    print("Organização concluída.")
+    # ------------------------------------------------------
+    # Processa todos os algoritmos
+    # ------------------------------------------------------
+
+    for algorithm, prefix in ALGORITHMS.items():
+
+        organize_algorithm(
+            algorithm,
+            prefix
+        )
+
+    print("\n" + "=" * 60)
+    print(" ORGANIZAÇÃO CONCLUÍDA")
+    print("=" * 60)
+
+    if DRY_RUN:
+        print("\n⚠️ DRY_RUN está ativado.")
+        print("Nada foi movido.")
+        print("Altere DRY_RUN = False para executar.")
 
 
 if __name__ == "__main__":

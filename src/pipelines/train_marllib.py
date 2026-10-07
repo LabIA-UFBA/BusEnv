@@ -1,4 +1,3 @@
-
 import os
 import pickle
 import time
@@ -9,7 +8,7 @@ from gym.spaces import Dict as GymDict
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from marllib import marl
 from marllib.envs.base_env import ENV_REGISTRY
-from envs.sunt_env import parallel_env
+from envs.sunt_env import parallel_env, DefaultReward
 from supersuit import pad_observations_v0, pad_action_space_v0
 from contextlib import nullcontext
 
@@ -95,6 +94,10 @@ class RLlibSuntBus(MultiAgentEnv):
         route_metadata = load_pickle("route_metadata.pkl")
         passenger_flow_stats = load_pickle("stop_passenger_flow.pkl")
 
+        weight_vector = {"occ_penalty": 0.0, "uptime_bonus": 1.0, "sync_score": 0.0, "energy_efficiency": 0.0}
+        tag = "occ1_up0_sync0_eff0"  # ou gere programaticamente a partir do dict
+        seed = 0
+
         # Create parallel env
         self.env = parallel_env(
             network=G,
@@ -114,6 +117,9 @@ class RLlibSuntBus(MultiAgentEnv):
             occupancy_source ="real", # "real" | "quantum_qru" | "quantum_lstm" | "timesfm" | "naive"
             reward_raining_type = "normal", # normal | penalization | bonus
             metrics_file_objectives=metrics_file_objectives,
+            reward_scalarization_mode="weighted", # "weighted" | "hybrid_lexico"
+            rewardClass=DefaultReward(reward_weights=weight_vector),
+            
         )
 
         # Supersuit wrappers
@@ -336,7 +342,8 @@ def main():
         "stop": {"timesteps_total": 200000},  # adjust as needed
         "checkpoint_freq": 5,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 12,     # adjust as needed to gain velocity in the training, 15 is a good point
+        "num_workers": 10,     # adjust as needed to gain velocity in the training, 15 is a good point
+        "num_cpu_per_worker": 2,
         "share_policy": "individual",
         "local_dir": "/mnt/ssd1/ray_results",
     }

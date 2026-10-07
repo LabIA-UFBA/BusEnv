@@ -13,7 +13,7 @@ with open(f"{pkl_path}/route_metadata.pkl", "rb") as f:
 # =====================================================
 # Trip that you want to see the data
 # =====================================================
-trip_to_show = "20002_1320_1"
+trip_to_show = "30013_120_10"
 
 if trip_to_show in real_routes:
     print(f"\n🚌 Trip ID: {trip_to_show}")

@@ -42,8 +42,8 @@ TRAIN_SCRIPT="${ROOT_DIR}/src/pipelines/train_marllib.py"
 #        "hatrpo" "happo" "vdn" "qmix" "facmac" \
 #        "vda2c" "vdppo")
 
-algos=("maa2c")
-
+algos=("coma" "happo" "hatrpo" "ippo" "itrpo" "matrpo" "ia2c" "maa2c" "mappo")
+# algos=("itrpo")
 # Funcionaram 100%
 # IA2C
 
@@ -57,12 +57,12 @@ algos=("maa2c")
 # "ipg"
 
 # 🔄 Número de execuções por algoritmo (edite à vontade)
-runs_per_algo=1
+runs_per_algo=10
 
 # 🚦 Quantos algoritmos podem rodar AO MESMO TEMPO (vagas fixas).
 # Se algos tiver mais itens que isso, o excedente entra na fila e
 # só começa quando uma vaga libera.
-MAX_PARALLEL=1
+MAX_PARALLEL=3
 
 # Pastas de saída ALTERAR CASO NECESSARIO ANTES DE RODAR
 LOG_DIR="${ROOT_DIR}/logs"

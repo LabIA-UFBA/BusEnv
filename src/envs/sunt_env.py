@@ -32,7 +32,7 @@ class parallel_env(ParallelEnv):
                 occupancy_rate=None, uptime_normalized=None,
                 real_routes=None, route_metadata=None,risk_horizon_steps=5, enable_risk_feature=True, occupancy_source="real", reward_raining_type ="normal",
                 metrics_file_objectives=None, passenger_flow_stats=None,
-                record_replay=False, replay_output_dir=None):
+                record_replay=False, replay_output_dir=None, reward_scalarization_mode="weighted"):
 
         # --- Basic configuration ---
         self.network = network
@@ -247,6 +247,7 @@ class parallel_env(ParallelEnv):
         self.last_rain_eff = {agent: 0.0 for agent in self.agents}
 
         self.reward_type = reward_raining_type # normal | penalization | bonus
+        self.reward_scalarization_mode = reward_scalarization_mode # weighted | hybrid_lexico
 
         self.date = None
 
@@ -264,11 +265,13 @@ class parallel_env(ParallelEnv):
 
                 writer.writerow([
                     "episode",
+                    "context",
                     "occupancy",
                     "uptime",
                     "sync",
                     "efficiency",
-                    "Occupancy Percentage"
+                    "Occupancy Percentage",
+                    "step_count"
                 ])
         
         self.episode_counter = 0 # Episode Count
@@ -281,11 +284,27 @@ class parallel_env(ParallelEnv):
 
         # --- Manual selection of routes you can change for the ones that you want to use--- 
         self.manual_route_groups = {
-            "20001_310_1":  ["agent_0", "agent_1", "agent_2", "agent_3", "agent_4"],
-            "20001_310_2":  ["agent_5", "agent_6", "agent_7", "agent_8", "agent_9"],
-            "20002_1320_1":  ["agent_10", "agent_11", "agent_12", "agent_13", "agent_14"],
-            "20002_1320_10":  ["agent_15", "agent_16", "agent_17", "agent_18", "agent_19"],
+            "20005_1719_10":  ["agent_0", "agent_1", "agent_2", "agent_3", "agent_4"], # Obra Avenida Batatinha 
+            "20015_1413_1":  ["agent_5", "agent_6", "agent_7", "agent_8", "agent_9"], # Obra Avenida Batatinha
+            "20041_1230_10":  ["agent_10", "agent_11", "agent_12", "agent_13", "agent_14"], # Av. ACM, região do DETRAN antigo
+            "30013_120_10":  ["agent_15", "agent_16", "agent_17", "agent_18", "agent_19"], # Av. ACM, região do DETRAN antigo
             "20002_1367_5":  ["agent_20", "agent_21", "agent_22", "agent_23", "agent_24"],
+        }
+
+        # --- "Roadworks" context: route -> which roadwork affects it; roadwork -> active window
+        # "Roadworks" only becomes active when BOTH conditions are met: the route is near the roadwork
+        # AND the date falls within the construction window.
+        self.obras_routes = {
+            "20005_1719_10": "batatinha",
+            "20015_1413_1":  "batatinha",
+            "20041_1230_10": "duda_mendonca",
+            "30013_120_10":  "duda_mendonca",
+        }
+
+        self.obras_windows = {
+            # (data_inicio_dataset, data_fim_da_obra), formato "YYYY-MM-DD":
+            "batatinha":     ("2024-03-01", "2024-08-30"),  # inaugurada 27/08/2024
+            "duda_mendonca": ("2024-03-01", "2025-03-28"),  # inaugurada 28/03/2025
         }
 
         # Element of the new reward with the occupancy
@@ -356,7 +375,7 @@ class parallel_env(ParallelEnv):
         self.episode_step_counter = 0
 
         self.episode_objectives = {
-            agent: []
+            agent: defaultdict(list)
             for agent in self.agents
         }
 
@@ -655,7 +674,7 @@ class parallel_env(ParallelEnv):
 
         # --- Reset dynamic presence tracking for this step ---
         for node in self.node_occupancy:
-            self.node_occupancy[node] = []  # clear per-step occupancy
+            self.node_occupancy[node] = []  # clear per step occupancy
 
         if self.episode_step_counter % 50 == 0:
             print(f"\n--- [STEP {self.episode_step_counter}] ---")
@@ -706,7 +725,26 @@ class parallel_env(ParallelEnv):
                 # Rain off
                 is_raining = False
 
-
+            # --- Construction work: Is this agent's route near any construction site AND does
+            # the current date fall within the window when that site was active?
+            agent_route_id_now = self.agent_route_id.get(agent, "unknown")
+            obra_name = self.obras_routes.get(agent_route_id_now)
+            is_near_obra = False
+            if obra_name is not None:
+                start, end = self.obras_windows.get(obra_name, (None, None))
+                if start is not None and start <= self.date <= end: # Checking if the current date falls within the project timeframe
+                    is_near_obra = True
+            
+            if is_near_obra and is_raining:
+                current_context = "obras_chuva"
+            elif is_near_obra:
+                current_context = "obras"
+            elif is_raining:
+                current_context = "rain"
+            else:
+                current_context = "normal"
+            
+            
             # === ACTION 0: WAIT ===
             if action == 0:
                 if action == 0 and self.steps[agent] % 20 == 0:
@@ -746,6 +784,9 @@ class parallel_env(ParallelEnv):
 
                 self.agent_times[agent] += travel_time # Avançando o relogio do agente baseado no tempo da viagem
                 self.estimated_times[agent] += travel_time
+
+                # --- Efficiency: expected por ARESTA + tolerância absoluta,
+                expected_segment = travel_time + self.reward.efficiency_tolerance_seconds
 
                 # --- Resolve this agent's route id once (reused for the queue key below and
                 # for the headway key further down, instead of re-scanning self.real_routes). ---
@@ -1009,8 +1050,8 @@ class parallel_env(ParallelEnv):
                 )
 
                 """
-                # CHAMADA PADRÃO COM O RAIN (CHUVA)
-                reward = self.reward.getReward( 
+                # CHAMADA PADRÃO COM O RAIN (CHUVA) -- escolhe scalarização via flag
+                reward_kwargs = dict(
                     agent=agent,
                     new_state=next_node,
                     previous_state=curr_node,
@@ -1018,7 +1059,7 @@ class parallel_env(ParallelEnv):
                     target=route[-1],
                     network=self.network,
                     estimated_time=self.estimated_times[agent],
-                    expected_time=self.expected_times[agent],
+                    expected_time= expected_segment, # self.expected_times[agent],
                     delay=0,
                     agent_state=state,
                     headways=self.headways[key], # headways=self.headways[next_node]
@@ -1026,6 +1067,15 @@ class parallel_env(ParallelEnv):
                     reward_type=self.reward_type,
                     last_rain_eff=self.last_rain_eff.get(agent, 0.0)
                 )
+
+                if self.reward_scalarization_mode == "hybrid_lexico":
+                    # is_near_obra only matters for Hybrid-B's context selection
+                    # getReward/getObjectives do not receive/use this flag
+                    reward = self.reward.getRewardLexicographicHybrid(
+                        context=current_context, **reward_kwargs
+                    )
+                else:
+                    reward = self.reward.getReward(**reward_kwargs)
 
                 vector = self.reward.getVectorReward(
                     agent=agent,
@@ -1035,7 +1085,7 @@ class parallel_env(ParallelEnv):
                     target=route[-1],
                     network=self.network,
                     estimated_time=self.estimated_times[agent],
-                    expected_time=self.expected_times[agent],
+                    expected_time= expected_segment, # self.expected_times[agent],
                     delay=0,
                     agent_state=state,
                     headways=self.headways[key],
@@ -1047,18 +1097,19 @@ class parallel_env(ParallelEnv):
                 print(
                     f"[OBJECTIVE APPEND] "
                     f"{agent} "
+                    f"context={current_context} "
                     f"time={self.agent_times[agent]:.0f} "
                     f"step={self.steps[agent]} "
-                    f"len_before={len(self.episode_objectives[agent])}"
+                    f"len_before={len(self.episode_objectives[agent][current_context])}"
                 )
 
-                self.episode_objectives[agent].append(vector)
+                self.episode_objectives[agent][current_context].append(vector)
                 # print("self.episode_objectives[agent]: ", self.episode_objectives[agent]) print(np.round(vector, 3))
                 
                 
                 self.last_rain_eff[agent] = self.reward._efficiency_component(
                     float(self.estimated_times[agent]),
-                    float(self.expected_times[agent])
+                    float(expected_segment) # float(self.expected_times[agent])
                 )
 
                 if self.episode_step_counter % 100 == 0:
@@ -1288,17 +1339,32 @@ class parallel_env(ParallelEnv):
             print("🌙 [ENV] All agents finished 24h — day finished. Awaiting reset() to advance to next day.")
             episode_vectors = []
             pct_ideal_occupancy_per_agent = []
+
+            context_vectors = {"normal": [], "rain": [], "obras": [], "obras_chuva": []}
+            context_step_counts = {"normal": 0, "rain": 0, "obras": 0, "obras_chuva": 0}
+
             for a in self.possible_agents:
                 print(f"{a}: time={self.agent_times[a]:.0f}s steps={self.steps[a]}")
 
                 print("=" * 60)
                 print(a)
-                print("episode_objectives len =", len(self.episode_objectives[a]))
+                print("episode_objectives contexts =", list(self.episode_objectives[a].keys()))
 
-                for i, obj in enumerate(self.episode_objectives[a][:5]):
-                    print(i, obj, type(obj))
+                for ctx, ctx_vecs in self.episode_objectives[a].items():
+                    print(
+                        f"  context={ctx} | "
+                        f"vectors={len(ctx_vecs)}"
+                    )
                 
-                vectors = np.array(self.episode_objectives[a]) # I take the episode values ​​for the metrics
+                # Achata todos os contextos num vetor só, pra manter
+                # total_objectives/mean_objectives com o mesmo significado
+                # de antes (média do dia inteiro, sem distinguir contexto).
+                all_vectors_this_agent = [
+                    v for ctx_list in self.episode_objectives[a].values()
+                    for v in ctx_list
+                ]
+
+                vectors = np.array(all_vectors_this_agent) # I take the episode values ​​for the metrics
 
                 if len(vectors) == 0:
                     total_objectives = np.zeros(4, dtype=np.float32)
@@ -1306,6 +1372,15 @@ class parallel_env(ParallelEnv):
                 else:
                     total_objectives = vectors.sum(axis=0) # Sums all vectors collected in the episode for this agent 
                     mean_objectives = vectors.mean(axis=0) # Mean for all vectors collected in the episode for this agent
+
+                # média por contexto, por agente
+                for ctx in ("normal", "rain", "obras", "obras_chuva"):
+                    ctx_vecs = self.episode_objectives[a].get(ctx, [])
+                    if len(ctx_vecs) == 0:
+                        continue
+                    ctx_arr = np.array(ctx_vecs)
+                    context_vectors[ctx].append(ctx_arr.mean(axis=0))
+                    context_step_counts[ctx] += len(ctx_vecs)
 
                 print("vectors.shape =", vectors.shape)
 
@@ -1363,17 +1438,24 @@ class parallel_env(ParallelEnv):
                         "PATH =", os.path.abspath(self.metrics_file_objectives),
                         "EP =", self.episode_counter,
                     )
-                    
-                    
+
                     writer = csv.writer(f)
-                    writer.writerow([
-                        self.episode_counter,
-                        float(episode_mean[0]),
-                        float(episode_mean[1]),
-                        float(episode_mean[2]),
-                        float(episode_mean[3]),
-                        pct_ideal_occupancy_day,
-                    ])
+                    # NOVO: uma linha por contexto que de fato ocorreu hoje,
+                    # em vez de uma linha só misturando tudo.
+                    for ctx in ("normal", "rain", "obras", "obras_chuva"):
+                        if not context_vectors[ctx]:
+                            continue
+                        ctx_mean = np.array(context_vectors[ctx]).mean(axis=0)
+                        writer.writerow([
+                            self.episode_counter,
+                            ctx,
+                            float(ctx_mean[0]),
+                            float(ctx_mean[1]),
+                            float(ctx_mean[2]),
+                            float(ctx_mean[3]),
+                            pct_ideal_occupancy_day,
+                            context_step_counts[ctx],
+                        ])
                 finally:
                     fcntl.flock(f, fcntl.LOCK_UN)
             
@@ -2176,7 +2258,8 @@ class DefaultReward(RewardBaseClass):
     def __init__(self, waitTimeDict=None, reward_weights=None, occupancy_range=(0.6, 0.9),
                  target_headway_seconds: float = 600.0,  # 10 minutos
                  max_sync_rel_std: float = 1.0,          # >1 é truncado
-                 softmin_temperature=0.2):
+                 softmin_temperature=0.2,
+                 efficiency_tolerance_seconds: float = 90.0):
         super().__init__()
         # self.waitTimeDict can be used if needed for other metrics
         self.waitTimeDict = waitTimeDict or {}
@@ -2194,10 +2277,16 @@ class DefaultReward(RewardBaseClass):
             "energy_efficiency": 0.5
         }
 
+        print("reward_weights: ", reward_weights) 
+
         self.occupancy_range = occupancy_range
         self.target_headway = float(target_headway_seconds)
         self.max_sync_rel_std = float(max_sync_rel_std)
         self.softmin_temperature = float(softmin_temperature)
+
+        # quanto tempo de espera/desvio por ARESTA é tolerado antes de expected_segment penalizar
+        # o eff. 90s ~ 1.5 ações de WAIT (cada WAIT consome 60s).
+        self.efficiency_tolerance_seconds = float(efficiency_tolerance_seconds)
 
         # =====================================================
         # FARF occupancy reward parameters
@@ -2223,6 +2312,43 @@ class DefaultReward(RewardBaseClass):
             w / weight_sum
             for w in weights
         ]
+
+        # =====================================================
+        # Hybrid-B: Lexicographic Priority + Slack/Tolerance + Weights
+        # R = lambda_c * R_prio + (1 - lambda_c) * R_w
+        # =====================================================
+
+        # Priority order by context (highest priority -> lowest priority)
+        # The keys must match those used in _lexico_deltas()
+        self.context_priority = {
+            "normal": ["occ", "sync", "eff", "uptime"],
+            "rain":   ["eff", "occ", "sync", "uptime"],
+            # obras: construção tende a bagunçar tempo de viagem (eff) 
+            # e regularidade de headway (sync) antes de afetar ocupação/uptime.
+            "obras":  ["sync", "eff", "occ", "uptime"],
+            "obras_chuva": ["eff", "sync", "occ", "uptime"],
+        }
+
+        # Tolerance (slack) by context, on the same [0,1] scale as
+        # the scores from getObjectives() (since Δ_i = 1 - v_i) 
+        # Initial "bootstrap" values ​​— to be calibrated later using the
+        # sigma_i-based procedure 
+        self.context_tolerance = {
+            "normal": {"occ": 0.50, "uptime": 0.17, "sync": 0.78, "eff": 0.65},
+            "rain":   {"occ": 0.50, "uptime": 0.17, "sync": 0.78, "eff": 0.65},
+            "obras":  {"occ": 0.50, "uptime": 0.17, "sync": 0.78, "eff": 0.65},
+            "obras_chuva": {"occ": 0.50, "uptime": 0.17, "sync": 0.78, "eff": 0.65},
+        }
+
+        # contextual lambda: the extent to which the priority/tolerance term dominates
+        # the simple weighted sum. 0 = pure weight-only (== scalarize()); 
+        # 1 = pure lexicographic with slack
+        self.context_lambda = {
+            "normal": 0.5,
+            "rain":   0.5,
+            "obras":  0.5,
+            "obras_chuva": 0.5,
+        }
 
     def _occ_component(self, occupancy: float) -> float:
         """
@@ -2363,6 +2489,71 @@ class DefaultReward(RewardBaseClass):
             return 0.0
         ratio = estimated_time / (expected_time + 1e-8)
         return float(np.clip(1.0 - ratio, 0.0, 1.0))
+    
+    # =====================================================
+    # Hybrid-B: helpers
+    # =====================================================
+    def _lexico_deltas(self, objectives: dict) -> dict:
+        """
+        Δ_i = 1 - v_i, that is, the deficit of each objective relative
+        to the fixed ideal (1.0). Maps the keys from getObjectives() to
+        the short keys used in context_priority / context_tolerance.
+        """
+        return {
+            "occ":    1.0 - objectives["occupancy_score"],
+            "uptime": 1.0 - objectives["uptime_score"],
+            "sync":   1.0 - objectives["sync_score"],
+            "eff":    1.0 - objectives["efficiency_score"],
+        }
+
+    def _priority_term(self, deltas: dict, context: str) -> float:
+        """
+        R_prio: termo lexicográfico com slack, contínuo (não é um degrau).
+
+        It goes through the context priority order and finds the first 
+        objective whose Δ_i exceeds its tolerance ε_i. The more 
+        later this violation happens (or if it never happens), the greater 
+        the score, this is what gives "lexicographic dominance with 
+        tolerance margin" described in the planning.
+
+        Retorn a value em [-1/n, 1].
+        """
+        order = self.context_priority[context]
+        tol = self.context_tolerance[context]
+        n = len(order)
+
+        for idx, obj_key in enumerate(order):
+            d = deltas[obj_key]
+            eps = tol[obj_key]
+            if d > eps:
+                denom = max(1.0 - eps, 1e-8)
+                violation = float(np.clip((d - eps) / denom, 0.0, 1.0))
+                return float((idx - violation) / n)
+
+        # nenhum objetivo violou sua tolerância -> todas as prioridades
+        # foram plenamente honradas
+        return 1.0
+
+    def _weighted_term(self, objectives: dict) -> float:
+        """
+        R_w: normalized weighted sum using the same formula as scalarize(),
+        but isolated here so that Hybrid-B does not undergo the rain
+        eff_weight*=2 hack (the role of the rain is now to change the
+        priority/tolerance order, not to double a weight).
+        """
+        w = self.reward_weights
+        num = (
+            w["occ_penalty"]       * objectives["occupancy_score"] +
+            w["uptime_bonus"]      * objectives["uptime_score"] +
+            w["sync_score"]        * objectives["sync_score"] +
+            w["energy_efficiency"] * objectives["efficiency_score"]
+        )
+        denom = (
+            w["occ_penalty"] + w["uptime_bonus"] +
+            w["sync_score"] + w["energy_efficiency"]
+        )
+        return float(num / denom) if denom > 0 else float(num)
+    
     
     def getReward_OLD(
         self,
@@ -2817,8 +3008,62 @@ class DefaultReward(RewardBaseClass):
 
         return reward
         
+    def getRewardLexicographicHybrid(
+        self,
+        agent,
+        new_state, previous_state, action, target, network,
+        estimated_time, expected_time, delay,
+        agent_state=None, headways=None, is_raining=False,
+        reward_type="normal", last_rain_eff=0.0,
+        context="normal"
+    ):
+        """
+        Hybrid-B: Lexicographic Priority + Slack/Tolerance + Weights.
 
-    # METODOS MORL DE RECOMPENSA LINEAR 
+            R = lambda_c * R_prio + (1 - lambda_c) * R_w
+
+        - R_prio: continuous lexicographical preference with tolerance,
+        using context_priority / context_tolerance. 
+        - R_w: simple weighted sum (in the same spirit as scalarize()). 
+        - lambda_c: contextual (context_lambda); controls the extent to which
+        the hierarchy dominates the weights. 
+
+        Context is selected externally according to the current environmental 
+        conditions (normal, rain, obras, or obras_chuva). 
+        Δ_i measured against the fixed ideal (1.0) — planning v1; 
+        dynamic reference is reserved for a future iteration.
+        """
+        objectives = self.getObjectives(
+            agent,
+            new_state, previous_state, action, target, network,
+            estimated_time, expected_time, delay,
+            agent_state, headways,
+            is_raining, reward_type, last_rain_eff
+        )
+
+        deltas = self._lexico_deltas(objectives)
+        r_prio = self._priority_term(deltas, context)
+        r_w = self._weighted_term(objectives)
+
+        lam = self.context_lambda[context]
+        reward = lam * r_prio + (1.0 - lam) * r_w
+        reward = float(np.clip(reward, -1.0, 1.0))
+
+        if np.random.rand() < 0.05:  # ~0.5% dos steps
+            print(
+                f"[HYBRID-B DBG] context={context} lambda={lam:.2f} | "
+                f"occ={objectives['occupancy_score']:.3f} "
+                f"uptime={objectives['uptime_score']:.3f} "
+                f"sync={objectives['sync_score']:.3f} "
+                f"eff={objectives['efficiency_score']:.3f} | "
+                f"R_prio={r_prio:.3f} R_w={r_w:.3f} | final={reward:.3f}"
+            )
+
+        return reward
+
+
+    # METODOS MORL DE RECOMPENSA LINEAR
+    
     def getRewardHard(
         self,
         new_state, previous_state, action, target, network,
