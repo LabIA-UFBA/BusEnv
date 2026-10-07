@@ -64,7 +64,7 @@ class RLlibSuntBus(MultiAgentEnv):
 
         metrics_file_objectives = os.environ.get(
             "SUNT_METRICS_FILE",
-            "/mnt/ssd1/wesley/BusEnv/metrics/episode_metrics.csv" # Change this to your path 
+            "YOUR PATH/episode_metrics.csv" # Change this to your path 
         )
 
         print(f"[ENV INIT] Using metrics_file_objectives = {metrics_file_objectives}")
@@ -321,7 +321,7 @@ def main():
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
-    metrics_dir = "/mnt/ssd1/wesley/BusEnv/metrics" # Change this to your path 
+    metrics_dir = "YOUR PATH/BusEnv/metrics" # Change this to your path 
     os.makedirs(metrics_dir, exist_ok=True)
     run_tag = args.cc_run_id or f"{args.algo}-default"
     metrics_file_objectives = os.path.join(metrics_dir, f"episode_metrics_{run_tag}.csv")

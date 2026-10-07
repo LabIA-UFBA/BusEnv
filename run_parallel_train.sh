@@ -1,26 +1,26 @@
 #!/bin/bash
 # ---------------------------------------------------------
-# Nohup launcher para MARLlib (CodeCarbon ligado por padrão)
-# Estrutura esperada:
+# Nohup launcher for MARLlib (CodeCarbon enabled by default)
+# Expected structure:
 #   ./run_all.sh
 #   ./src/pipelines/train_marllib.py
-#   ./codecarbon  (será criado se não existir)
-#   ./logs        (será criado se não existir)
+#   ./codecarbon  (created if it doesn't exist)
+#   ./logs        (created if it doesn't exist)
 #
-# MUDANÇA (fila por ALGORITMO): existem MAX_PARALLEL "vagas"
-# fixas (workers). Cada worker pega o PRÓXIMO algoritmo ainda não
-# iniciado na lista `algos`, roda suas `runs_per_algo` execuções em
-# SEQUÊNCIA (uma de cada vez), e só então volta a pegar o próximo
-# algoritmo disponível na lista. Assim, com 5 algoritmos e
-# MAX_PARALLEL=3: os 3 primeiros começam imediatamente, cada um
-# ocupando uma vaga; assim que qualquer um termina suas 5 runs, a
-# vaga é liberada e o worker pega o 4º (depois o 5º) automaticamente
-# — sem precisar editar `algos` e rodar o script de novo.
+# CHANGE (ALGORITHM-based queue): there are fixed MAX_PARALLEL
+# "slots" (workers). Each worker picks the NEXT algorithm not yet
+# started from the `algos` list, runs its `runs_per_algo` executions
+# SEQUENTIALLY (one at a time), and only then picks up the next
+# available algorithm from the list. Thus, with 5 algorithms and
+# MAX_PARALLEL=3: the first 3 start immediately, each occupying
+# a slot; as soon as any one finishes its 5 runs, the slot is
+# freed and the worker automatically picks up the 4th (then the 5th)
+# — without needing to edit `algos` and run the script again.
 # ---------------------------------------------------------
 
 # Modify if necessary before running; if you do not wish to select an output folder, you can comment out this line.
-export RAY_TMPDIR=/mnt/ssd1/ray_tmp
-export TMPDIR=/mnt/ssd1/tmp
+export RAY_TMPDIR=/mnt/ssd1/ray_tmp # ADD YOUR PATH
+export TMPDIR=/mnt/ssd1/tmp # ADD YOUR PATH
 
 # Descobre a raiz do projeto (pasta onde está este script)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

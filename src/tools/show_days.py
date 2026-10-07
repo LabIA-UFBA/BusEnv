@@ -1,7 +1,7 @@
 import os, pickle, pandas as pd
 
-daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"
-climate_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/climate_data/climate_data_2.pkl"
+daily_data_path = "YOUR PATH"
+climate_data_path = "YOUR PATH"
 
 obras_windows = {
     "batatinha":     ("2024-01-01", "2024-08-27"),

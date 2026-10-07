@@ -156,8 +156,7 @@ class parallel_env(ParallelEnv):
             self.default_travel_time = 1.0
 
         # --- Daily Data Control ---
-        self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily"  # Path to daily data files
-        # self.daily_data_path = "/mnt/ssd1/wesley/BusEnv/src/training_observation/daily_may"  # Path to daily data ONLY USING MAY
+        self.daily_data_path = "YOUR PATH/BusEnv/src/training_observation/daily"  # Path to daily data files
         self.daily_files = sorted([
             f for f in os.listdir(self.daily_data_path)
             if f.startswith("daily_data_") and f.endswith(".pkl")
@@ -169,11 +168,11 @@ class parallel_env(ParallelEnv):
 
         self.occupancy_source = occupancy_source # "real" | "quantum_qru" | "quantum_lstm" | "timesfm_ft" | "timesfm" | "naive"
 
-        self.quantum_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
+        self.quantum_data_path = ("YOUR PATH/BusEnv/src/training_observation/quantum_data") # Quamtum data path loading
 
-        self.prediction_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/prediction") # Prediction data path loading
+        self.prediction_data_path = ("YOUR PATH/BusEnv/src/training_observation/prediction") # Prediction data path loading
 
-        self.rates_data_path = ("/mnt/ssd1/wesley/BusEnv/src/training_observation/exports_rates")
+        self.rates_data_path = ("YOUR PATH/BusEnv/src/training_observation/exports_rates")
 
         self.quantum_routes = [
             "20001_310_1",
@@ -218,7 +217,7 @@ class parallel_env(ParallelEnv):
 
         # --- Logging and metrics ---
         self.metrics_file = "env_metrics.csv"  # To log metrics for analysis
-        self.metrics_file_objectives = metrics_file_objectives or "/mnt/ssd1/wesley/BusEnv/metrics/episode_metrics.csv"
+        self.metrics_file_objectives = metrics_file_objectives or "YOUR PATH/BusEnv/metrics/episode_metrics.csv"
         self._printed_day_end = set()
         self.last_logged_day = -1
         self.episode_step_counter = 0  # Counts total environment steps per episode
@@ -235,7 +234,7 @@ class parallel_env(ParallelEnv):
         if self.use_rain:
             # If the component is up, then we use it 
             with open(
-                '/mnt/ssd1/wesley/BusEnv/src/training_observation/climate_data/climate_data_2.pkl',
+                'YOUR PATH/src/training_observation/climate_data/climate_data_2.pkl',
                 'rb'
             ) as f:
                 self.climate_data = pickle.load(f)
@@ -1478,7 +1477,7 @@ class parallel_env(ParallelEnv):
             #print(f"[DEBUG] Node occupancy snapshot: {active_nodes}")
 
         
-        #print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
+        # print(f"[STEP SUMMARY] Active: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'active')} "
         #    f"| Parked: {sum(1 for a in self.possible_agents if self.agent_states[a]['status'] == 'parked')} "
         #    f"| Done flag: {all_parked}")
 
