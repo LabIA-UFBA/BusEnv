@@ -121,9 +121,9 @@ $$
 k =
 \min
 \left\{
- i :
- \Delta_{o_i} > \epsilon_{c,o_i}
-\right\}.
+i :
+\Delta_{o_i} > \epsilon_{c,o_i}
+\right\}
 $$
 
 If a violation occurs, its normalized severity is:
