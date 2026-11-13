@@ -28,3 +28,5 @@ metrics
 paretoMeans
 politicas
 runs_lexicografico
+# RAG offline artifacts (chunks, pools, selectors, context tables)
+artifacts/rag/

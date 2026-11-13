@@ -1,4 +1,5 @@
 import os
+import json
 import pickle
 import time
 import argparse
@@ -95,7 +96,13 @@ class RLlibSuntBus(MultiAgentEnv):
         passenger_flow_stats = load_pickle("stop_passenger_flow.pkl")
 
         weight_vector = {"occ_penalty": 0.0, "uptime_bonus": 1.0, "sync_score": 0.0, "energy_efficiency": 0.0}
-        tag = "occ1_up0_sync0_eff0"  # ou gere programaticamente a partir do dict
+        # Optional: set the reward weights from outside, e.g.
+        # RAG_REWARD_WEIGHTS='{"occ_penalty":0.6,"uptime_bonus":0.4,"sync_score":0.5,"energy_efficiency":0.5}'
+        # so every compared run uses exactly the same reward. Without it, the weights above are used.
+        if os.environ.get("RAG_REWARD_WEIGHTS"):
+            weight_vector = json.loads(os.environ["RAG_REWARD_WEIGHTS"])
+        tag = "occ{occ_penalty:g}_up{uptime_bonus:g}_sync{sync_score:g}_eff{energy_efficiency:g}".format(**weight_vector)
+        print(f"[ENV INIT] reward weights {weight_vector} (tag {tag})")
         seed = 0
 
         # Create parallel env
@@ -119,8 +126,23 @@ class RLlibSuntBus(MultiAgentEnv):
             metrics_file_objectives=metrics_file_objectives,
             reward_scalarization_mode="weighted", # "weighted" | "hybrid_lexico"
             rewardClass=DefaultReward(reward_weights=weight_vector),
-            
+
         )
+
+        # --- Optional retrieval context (src/rag). Off by default. ---
+        # main() fills these environment variables from --day-split and --retrieval, so that
+        # every Ray worker (each one builds its own copy of this env) sees the same settings.
+        # 1) Which days to simulate: "train" = 2024, "test" = 2025, "none" = all (old behaviour).
+        from rag.day_split import apply_day_split
+        n_days = apply_day_split(self.env, os.environ.get("RAG_DAY_SPLIT", "none"),
+                                 train_end=os.environ.get("RAG_TRAIN_END", "2024-12-31"))
+        print(f"[ENV INIT] day split={os.environ.get('RAG_DAY_SPLIT', 'none')} days={n_days}")
+        # 2) If a retrieval method was chosen, add its context numbers to every bus's observation.
+        if os.environ.get("RAG_TABLE"):
+            from rag.wrapper import RagObsWrapper
+            self.env = RagObsWrapper(self.env, os.environ["RAG_TABLE"])
+            print(f"[ENV INIT] retrieval={os.environ.get('RAG_RETRIEVAL', '?')} (table {self.env.table.arm}, "
+                  f"{self.env.D} extra inputs) from {os.environ['RAG_TABLE']}")
 
         # Supersuit wrappers
         self.env = pad_observations_v0(self.env)
@@ -290,11 +312,12 @@ DEFAULT_CONFIG = {"lr": 0.0003, "batch_episode": 20, "sgd_minibatch_size": 128}
 def main():
     
     import os
-    os.environ["RAY_TMPDIR"] = "/mnt/ssd1/ray_tmp"
-    os.environ["TMPDIR"] = "/mnt/ssd1/tmp"
+    # Defaults unchanged; can be overridden by the caller's environment.
+    os.environ.setdefault("RAY_TMPDIR", "/mnt/ssd1/ray_tmp")
+    os.environ.setdefault("TMPDIR", "/mnt/ssd1/tmp")
 
-    os.makedirs("/mnt/ssd1/ray_tmp", exist_ok=True)
-    os.makedirs("/mnt/ssd1/tmp", exist_ok=True)
+    os.makedirs(os.environ["RAY_TMPDIR"], exist_ok=True)
+    os.makedirs(os.environ["TMPDIR"], exist_ok=True)
 
     parser = argparse.ArgumentParser(description="Train MARLlib algorithms on SUNT Bus env")
     parser.add_argument(
@@ -313,21 +336,48 @@ def main():
     parser.add_argument("--cc-run-id", default=None, help="Unique run identifier for CodeCarbon logging.")
     parser.add_argument("--cc-output-dir", default="./codecarbon", help="Directory to store CodeCarbon CSV/JSON.")
     parser.add_argument("--no-cc", action="store_true", help="Disable CodeCarbon tracking.")
+    # Retrieval and experiment options. The defaults reproduce the original behaviour.
+    from rag.methods import METHODS, table_for
+    parser.add_argument("--retrieval", default=os.environ.get("RAG_RETRIEVAL", "none"), choices=list(METHODS),
+                        help="Context added to each bus's observation: none (original env), bm25, dense, "
+                             "hybrid, rl-chunk, ma-chunk, lookahead, random, ... (see src/rag/methods.py).")
+    parser.add_argument("--day-split", default=os.environ.get("RAG_DAY_SPLIT", "none"),
+                        choices=["none", "train", "test"],
+                        help="Which days to simulate: train = 2024, test = 2025, none = all days.")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed (MARLlib default: 321).")
+    parser.add_argument("--timesteps", type=int, default=200000, help="Stop after this many environment steps.")
+    parser.add_argument("--num-workers", type=int, default=10)
+    parser.add_argument("--local-dir", default=os.environ.get("RAY_RESULTS_DIR", "/mnt/ssd1/ray_results"),
+                        help="Where Ray saves results and checkpoints.")
 
     args = parser.parse_args()
+
+    # Pass the choices to the env through environment variables (read in RLlibSuntBus.__init__).
+    os.environ["RAG_RETRIEVAL"] = args.retrieval
+    os.environ["RAG_DAY_SPLIT"] = args.day_split
+    table = table_for(args.retrieval)
+    if table:
+        os.environ["RAG_TABLE"] = table
+    else:
+        os.environ.pop("RAG_TABLE", None)
 
     # Ensure CC dir exists (prevents OSError)
     outdir = args.cc_output_dir if not args.no_cc else None
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
-    metrics_dir = "/mnt/ssd1/wesley/BusEnv/metrics" # Change this to your path 
+    metrics_dir = os.environ.get("SUNT_METRICS_DIR", "/mnt/ssd1/wesley/BusEnv/metrics") # Change this to your path
     os.makedirs(metrics_dir, exist_ok=True)
     run_tag = args.cc_run_id or f"{args.algo}-default"
     metrics_file_objectives = os.path.join(metrics_dir, f"episode_metrics_{run_tag}.csv")
-    
-    # Environment
-    env_tuple = marl.make_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
+    if "SUNT_METRICS_DIR" in os.environ:
+        # each Ray worker's env writes its per-episode metrics to this file
+        os.environ["SUNT_METRICS_FILE"] = metrics_file_objectives
+    print(f"[RUN] tag={run_tag} retrieval={args.retrieval} day_split={args.day_split} seed={args.seed}")
+
+    # Environment (uses the repo copy of sunt_bus.yaml if MARLlib's installation has none)
+    from rag.marllib_compat import make_sunt_env
+    env_tuple = make_sunt_env(environment_name="sunt_bus", map_name="sunt_bus", force_coop=False)
 
     # Algorithm
     algo_ctor = getattr(marl.algos, args.algo)
@@ -339,14 +389,17 @@ def main():
     # Base run config
     run_config = {
         "local_mode": False,
-        "stop": {"timesteps_total": 200000},  # adjust as needed
+        "stop": {"timesteps_total": args.timesteps},  # adjust as needed
         "checkpoint_freq": 5,
+        "checkpoint_end": True,
         "num_gpus": 0,         # adjust as needed
-        "num_workers": 10,     # adjust as needed to gain velocity in the training, 15 is a good point
+        "num_workers": args.num_workers,     # adjust as needed to gain velocity in the training, 15 is a good point
         "num_cpu_per_worker": 2,
         "share_policy": "individual",
-        "local_dir": "/mnt/ssd1/ray_results",
+        "local_dir": args.local_dir,
     }
+    if args.seed is not None:
+        run_config["seed"] = args.seed
 
     """
     custom_config = {

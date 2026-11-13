@@ -1,5 +1,7 @@
 # 07 — Implementation Roadmap
 
+> **Implementation status (2026-11-13):** Steps 1–10 are implemented and tested. Offline results and the RLlib blocker are in `PHASE1_STATUS.md`; commands are in `RUNBOOK.md`.
+
 > Written for the coding agent that will implement Phase 1. Every change lists: **why**, **what file**, **whether it is a separate module**, **complexity** (S ≤ ½ day, M ≤ 2 days, L > 2 days) and **scientific value**. `sunt_env.py`, `DefaultReward`, the action space and the MARLlib configs are **not modified** in Phase 1.
 
 ## 0. Two environments, one contract
